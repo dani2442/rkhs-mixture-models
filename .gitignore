@@ -1,5 +1,5 @@
 # Python-generated files
-__pycache__/
+__pycache__
 *.py[oc]
 build/
 dist/
@@ -14,3 +14,4 @@ csvs
 .vscode
 Results_MedicalData
 Results_TimeSeries
+.env
