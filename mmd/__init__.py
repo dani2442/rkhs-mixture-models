@@ -1,6 +1,7 @@
 import torch
 
 from typing import Tuple
+from mmd.kernel.gaussian import gaussian_kernel_J, gaussian_kernel_I
 
 # ============================================================
 # 3) Empirical MMD^2(P_n, Q) for Gaussian mixture Q
