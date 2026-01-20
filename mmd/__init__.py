@@ -15,11 +15,14 @@ from mmd.kernel.polynomial import PolynomialKernel, LinearKernel, QuadraticKerne
 from mmd.spaces.base import HilbertBasis
 from mmd.spaces.L2 import L2Basis, L2CosineBasis, L2FourierBasis
 from mmd.spaces.graph import GraphBasis, GraphLaplacianBasis
+from mmd.spaces.so3 import SO3Basis, SO3FourierBasis
 from mmd.mixture import GaussianMixtureModel, fit_gaussian_mixture_mmd
 from mmd.data import (
     generate_l2_mixture_data,
     generate_graph_mixture_data,
     generate_l2_sine_cosine_data,
+    generate_so3_mixture_data,
+    generate_so3_rotation_matrix_data,
 )
 from mmd.visualization import (
     plot_l2_trajectories,
@@ -166,10 +169,14 @@ __all__ = [
     "L2FourierBasis",
     "GraphBasis",
     "GraphLaplacianBasis",
+    "SO3Basis",
+    "SO3FourierBasis",
     # Data generation
     "generate_l2_mixture_data",
     "generate_graph_mixture_data",
     "generate_l2_sine_cosine_data",
+    "generate_so3_mixture_data",
+    "generate_so3_rotation_matrix_data",
     # Visualization
     "plot_l2_trajectories",
     "plot_l2_means_comparison",
