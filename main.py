@@ -1,7 +1,8 @@
 import torch
 import math
 
-from mmd.spaces.L2 import L2CosineBasis
+from mmd.spaces import L2CosineBasis
+from mmd.kernel import GaussianKernel
 from mmd import mmd2_empirical_vs_gaussian_mixture
 
 torch.manual_seed(0)
@@ -16,7 +17,8 @@ sigma_kernel = 1.0
 device = torch.device("cpu")
 dtype = torch.float64
 
-basis = L2CosineBasis(T=T, R=R, grid_size=grid_size, device=device, dtype=dtype)
+# Create the L2 cosine basis for projecting functional data
+basis = L2CosineBasis(T=T, R=R, grid_size=grid_size, d=d, device=device, dtype=dtype)
 
 # Fake data trajectories X_i(t) on grid: shape (n,L,d)
 n = 128
@@ -42,8 +44,11 @@ m = 0.2 * torch.randn((Kmix, M), device=device, dtype=dtype)
 var = 0.5 + 0.1 * torch.rand((Kmix, M), device=device, dtype=dtype)  # (K,M)
 Kcov = torch.diag_embed(var)  # (K,M,M)
 
-# Compute MMD^2
+# Create the kernel
+kernel = GaussianKernel(sigma=sigma_kernel)
+
+# Compute MMD^2 using the kernel object
 mmd2, stats = mmd2_empirical_vs_gaussian_mixture(
-    X=X, pi=pi, m=m, Kcov=Kcov, sigma=sigma_kernel, compute_const_term=True
+    X=X, pi=pi, m=m, Kcov=Kcov, kernel=kernel, compute_const_term=True
 )
 print("MMD^2(P_n, Q) =", float(mmd2))
