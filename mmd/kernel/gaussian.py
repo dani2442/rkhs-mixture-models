@@ -157,27 +157,3 @@ class GaussianKernel(Kernel):
                 Imat[k, s] = torch.exp(logI)
 
         return Imat
-
-
-# Backward compatibility: standalone functions
-def gaussian_kernel_J(
-    X: torch.Tensor,
-    m: torch.Tensor,
-    Kcov: torch.Tensor,
-    sigma: float,
-    eps_jitter: float = 1e-8,
-) -> torch.Tensor:
-    """Legacy function for backward compatibility."""
-    kernel = GaussianKernel(sigma=sigma, eps_jitter=eps_jitter)
-    return kernel.compute_J(X, m, Kcov)
-
-
-def gaussian_kernel_I(
-    m: torch.Tensor,
-    Kcov: torch.Tensor,
-    sigma: float,
-    eps_jitter: float = 1e-8,
-) -> torch.Tensor:
-    """Legacy function for backward compatibility."""
-    kernel = GaussianKernel(sigma=sigma, eps_jitter=eps_jitter)
-    return kernel.compute_I(m, Kcov)
