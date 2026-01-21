@@ -10,7 +10,7 @@ import torch
 from typing import Tuple, Optional, Union
 
 from mmd.kernel.base import Kernel
-from mmd.kernel.gaussian import GaussianKernel, gaussian_kernel_J, gaussian_kernel_I
+from mmd.kernel.gaussian import GaussianKernel
 from mmd.kernel.polynomial import PolynomialKernel, LinearKernel, QuadraticKernel
 from mmd.spaces.base import HilbertBasis
 from mmd.spaces.L2 import L2Basis, L2CosineBasis, L2FourierBasis

@@ -2,7 +2,7 @@
 Kernel functions for MMD computation on Hilbert spaces.
 """
 from .base import Kernel
-from .gaussian import GaussianKernel, gaussian_kernel_J, gaussian_kernel_I
+from .gaussian import GaussianKernel
 from .polynomial import PolynomialKernel, LinearKernel, QuadraticKernel
 
 __all__ = [
