@@ -322,9 +322,16 @@ def main():
     fig4.suptitle("Training Results", fontsize=14)
     plt.tight_layout()
     
-    plt.show()
+    # Save figures as PDF for paper
+    print("\n[6] Saving figures as PDF...")
+    paper_images_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "paper", "images")
+    os.makedirs(paper_images_dir, exist_ok=True)
     
-    # ==========================================
+    fig1.savefig(os.path.join(paper_images_dir, "so3_sphere_visualization.pdf"), format="pdf", bbox_inches="tight")
+    fig2.savefig(os.path.join(paper_images_dir, "so3_euler_angles.pdf"), format="pdf", bbox_inches="tight")
+    fig4.savefig(os.path.join(paper_images_dir, "so3_training_summary.pdf"), format="pdf", bbox_inches="tight")
+    print(f"   Saved figures to {paper_images_dir}")
+
     # Summary
     # ==========================================
     print("\n" + "=" * 60)

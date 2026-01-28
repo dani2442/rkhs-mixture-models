@@ -542,10 +542,19 @@ def main():
     fig7.suptitle("Data and Means in Coefficient Space", fontsize=14)
     plt.tight_layout()
     
-    print("\n[7] Displaying plots...")
-    plt.show()
+    # Save figures as PDF for paper
+    print("\n[7] Saving figures as PDF...")
+    paper_images_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "paper", "images")
+    os.makedirs(paper_images_dir, exist_ok=True)
     
-    print("\nDone!")
+    fig1.savefig(os.path.join(paper_images_dir, "l2_gaussian_trajectories.pdf"), format="pdf", bbox_inches="tight")
+    fig2.savefig(os.path.join(paper_images_dir, "l2_gaussian_means_dim0.pdf"), format="pdf", bbox_inches="tight")
+    fig4.savefig(os.path.join(paper_images_dir, "l2_gaussian_training.pdf"), format="pdf", bbox_inches="tight")
+    fig5.savefig(os.path.join(paper_images_dir, "l2_gaussian_variance.pdf"), format="pdf", bbox_inches="tight")
+    fig7.savefig(os.path.join(paper_images_dir, "l2_gaussian_coefficients.pdf"), format="pdf", bbox_inches="tight")
+    print(f"   Saved figures to {paper_images_dir}")
+
+    print("\n[8] Displaying plots...")
 
 
 if __name__ == "__main__":
