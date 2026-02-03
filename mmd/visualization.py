@@ -452,3 +452,307 @@ def plot_mixture_weights(
     ax.grid(True, alpha=0.3, axis="y")
 
     return ax
+
+
+def plot_l2_2d_surface(
+    X: torch.Tensor,
+    s_grid: torch.Tensor,
+    t_grid: torch.Tensor,
+    ax: Optional["plt.Axes"] = None,
+    sample_idx: int = 0,
+    dim: int = 0,
+    cmap: str = "viridis",
+    alpha: float = 0.9,
+    title: str = "L² 2D Function",
+    xlabel: str = "s",
+    ylabel: str = "t",
+    zlabel: str = "f(s,t)",
+) -> "plt.Axes":
+    """
+    Plot a single 2D function as a 3D surface mesh.
+
+    Args:
+        X: 2D functions, shape (n, grid_size_s, grid_size_t, d) or (grid_size_s, grid_size_t, d)
+        s_grid: S meshgrid, shape (grid_size_s, grid_size_t)
+        t_grid: T meshgrid, shape (grid_size_s, grid_size_t)
+        ax: Matplotlib 3D axes. If None, creates new figure.
+        sample_idx: Which sample to plot (if X has batch dimension)
+        dim: Which spatial dimension to plot (if d > 1)
+        cmap: Colormap for surface
+        alpha: Surface transparency
+        title: Plot title
+        xlabel, ylabel, zlabel: Axis labels
+
+    Returns:
+        Matplotlib 3D axes
+    """
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+    if ax is None:
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection="3d")
+
+    # Handle input dimensions
+    X_np = X.detach().cpu().numpy()
+    if X_np.ndim == 4:
+        X_plot = X_np[sample_idx, :, :, dim]
+    elif X_np.ndim == 3:
+        X_plot = X_np[:, :, dim]
+    else:
+        X_plot = X_np
+
+    S_np = s_grid.detach().cpu().numpy()
+    T_np = t_grid.detach().cpu().numpy()
+
+    # Plot surface
+    surf = ax.plot_surface(
+        S_np, T_np, X_plot,
+        cmap=cmap, alpha=alpha, linewidth=0.2, edgecolor="k"
+    )
+
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_zlabel(zlabel)
+    ax.set_title(title)
+
+    return ax
+
+
+def plot_l2_2d_surfaces_grid(
+    X: torch.Tensor,
+    s_grid: torch.Tensor,
+    t_grid: torch.Tensor,
+    assignments: Optional[torch.Tensor] = None,
+    n_samples: int = 6,
+    dim: int = 0,
+    figsize: tuple = (15, 10),
+    title: str = "L² 2D Functions",
+    cmap: str = "tab10",
+) -> "plt.Figure":
+    """
+    Plot multiple 2D functions as a grid of 3D surface meshes.
+
+    Args:
+        X: 2D functions, shape (n, grid_size_s, grid_size_t, d)
+        s_grid: S meshgrid, shape (grid_size_s, grid_size_t)
+        t_grid: T meshgrid, shape (grid_size_s, grid_size_t)
+        assignments: Component assignments, shape (n,)
+        n_samples: Number of samples to display
+        dim: Which spatial dimension to plot (if d > 1)
+        figsize: Figure size
+        title: Main figure title
+        cmap: Colormap for component colors
+
+    Returns:
+        Matplotlib figure
+    """
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+    X_np = X.detach().cpu().numpy()
+    n_total = X_np.shape[0]
+    n_samples = min(n_samples, n_total)
+
+    # Determine grid layout
+    n_cols = min(3, n_samples)
+    n_rows = (n_samples + n_cols - 1) // n_cols
+
+    fig = plt.figure(figsize=figsize)
+
+    S_np = s_grid.detach().cpu().numpy()
+    T_np = t_grid.detach().cpu().numpy()
+
+    colormap = cm.get_cmap(cmap)
+
+    # Select samples (stratified by component if assignments given)
+    if assignments is not None:
+        assignments_np = assignments.detach().cpu().numpy()
+        n_components = int(assignments_np.max()) + 1
+        indices = []
+        samples_per_comp = max(1, n_samples // n_components)
+        for k in range(n_components):
+            comp_indices = np.where(assignments_np == k)[0]
+            if len(comp_indices) > 0:
+                selected = np.random.choice(
+                    comp_indices, min(samples_per_comp, len(comp_indices)), replace=False
+                )
+                indices.extend(selected)
+        indices = indices[:n_samples]
+    else:
+        indices = np.random.choice(n_total, n_samples, replace=False)
+
+    for plot_idx, sample_idx in enumerate(indices):
+        ax = fig.add_subplot(n_rows, n_cols, plot_idx + 1, projection="3d")
+
+        if X_np.ndim == 4:
+            Z = X_np[sample_idx, :, :, dim]
+        else:
+            Z = X_np[sample_idx]
+
+        # Color by component if available
+        if assignments is not None:
+            k = int(assignments_np[sample_idx])
+            n_comp = int(assignments_np.max()) + 1
+            color = colormap(k / max(n_comp - 1, 1))
+            surf = ax.plot_surface(
+                S_np, T_np, Z,
+                color=color, alpha=0.8, linewidth=0.1, edgecolor="k"
+            )
+            ax.set_title(f"Sample {sample_idx} (k={k+1})", fontsize=10)
+        else:
+            surf = ax.plot_surface(
+                S_np, T_np, Z,
+                cmap="viridis", alpha=0.8, linewidth=0.1, edgecolor="k"
+            )
+            ax.set_title(f"Sample {sample_idx}", fontsize=10)
+
+        ax.set_xlabel("s")
+        ax.set_ylabel("t")
+        ax.set_zlabel(f"x_{dim}(s,t)")
+
+    fig.suptitle(title, fontsize=14)
+    plt.tight_layout()
+
+    return fig
+
+
+def plot_l2_2d_means_comparison(
+    predicted_means: torch.Tensor,
+    basis,
+    s_grid: torch.Tensor,
+    t_grid: torch.Tensor,
+    true_means: Optional[torch.Tensor] = None,
+    dim: int = 0,
+    figsize: tuple = (15, 10),
+    title: str = "Mean Functions Comparison",
+) -> "plt.Figure":
+    """
+    Compare predicted and true mean functions for 2D data.
+
+    Args:
+        predicted_means: Predicted mean coefficients, shape (K, M)
+        basis: L2TensorBasis2D for reconstructing means from coefficients
+        s_grid: S meshgrid, shape (grid_size_s, grid_size_t)
+        t_grid: T meshgrid, shape (grid_size_s, grid_size_t)
+        true_means: True mean functions, shape (K, grid_size_s, grid_size_t, d)
+        dim: Spatial dimension to plot
+        figsize: Figure size
+        title: Main figure title
+
+    Returns:
+        Matplotlib figure
+    """
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+    # Reconstruct predicted means
+    pred_functions = basis.reconstruct(predicted_means).detach().cpu().numpy()
+    K = pred_functions.shape[0]
+
+    S_np = s_grid.detach().cpu().numpy()
+    T_np = t_grid.detach().cpu().numpy()
+
+    # 2 rows: top for predicted, bottom for true (if available)
+    n_rows = 2 if true_means is not None else 1
+    fig = plt.figure(figsize=figsize)
+
+    colormap = cm.get_cmap("tab10")
+
+    for k in range(K):
+        # Predicted mean
+        ax = fig.add_subplot(n_rows, K, k + 1, projection="3d")
+        Z_pred = pred_functions[k, :, :, dim]
+        color = colormap(k / max(K - 1, 1))
+        ax.plot_surface(
+            S_np, T_np, Z_pred,
+            color=color, alpha=0.8, linewidth=0.1, edgecolor="k"
+        )
+        ax.set_title(f"Pred k={k+1}", fontsize=10)
+        ax.set_xlabel("s")
+        ax.set_ylabel("t")
+        ax.set_zlabel(f"m_{dim}(s,t)")
+
+        # True mean (if available)
+        if true_means is not None:
+            ax2 = fig.add_subplot(n_rows, K, K + k + 1, projection="3d")
+            true_np = true_means.detach().cpu().numpy()
+            Z_true = true_np[k, :, :, dim]
+            ax2.plot_surface(
+                S_np, T_np, Z_true,
+                color=color, alpha=0.8, linewidth=0.1, edgecolor="k"
+            )
+            ax2.set_title(f"True k={k+1}", fontsize=10)
+            ax2.set_xlabel("s")
+            ax2.set_ylabel("t")
+            ax2.set_zlabel(f"m_{dim}(s,t)")
+
+    fig.suptitle(title, fontsize=14)
+    plt.tight_layout()
+
+    return fig
+
+
+def plot_l2_2d_samples_by_component(
+    X: torch.Tensor,
+    assignments: torch.Tensor,
+    s_grid: torch.Tensor,
+    t_grid: torch.Tensor,
+    dim: int = 0,
+    samples_per_component: int = 2,
+    figsize: tuple = (15, 8),
+    title: str = "Samples by Component",
+) -> "plt.Figure":
+    """
+    Plot samples organized by component assignment.
+
+    Args:
+        X: 2D functions, shape (n, grid_size_s, grid_size_t, d)
+        assignments: Component assignments, shape (n,)
+        s_grid: S meshgrid
+        t_grid: T meshgrid
+        dim: Spatial dimension to plot
+        samples_per_component: Number of samples per component
+        figsize: Figure size
+        title: Main figure title
+
+    Returns:
+        Matplotlib figure
+    """
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+    X_np = X.detach().cpu().numpy()
+    assignments_np = assignments.detach().cpu().numpy()
+    n_components = int(assignments_np.max()) + 1
+
+    S_np = s_grid.detach().cpu().numpy()
+    T_np = t_grid.detach().cpu().numpy()
+
+    fig = plt.figure(figsize=figsize)
+    colormap = cm.get_cmap("tab10")
+
+    plot_idx = 1
+    for k in range(n_components):
+        comp_indices = np.where(assignments_np == k)[0]
+        n_show = min(samples_per_component, len(comp_indices))
+        if n_show == 0:
+            continue
+        selected = np.random.choice(comp_indices, n_show, replace=False)
+
+        color = colormap(k / max(n_components - 1, 1))
+
+        for idx in selected:
+            ax = fig.add_subplot(
+                n_components, samples_per_component, plot_idx, projection="3d"
+            )
+            Z = X_np[idx, :, :, dim]
+            ax.plot_surface(
+                S_np, T_np, Z,
+                color=color, alpha=0.8, linewidth=0.1, edgecolor="k"
+            )
+            ax.set_title(f"k={k+1}, sample {idx}", fontsize=9)
+            ax.set_xlabel("s")
+            ax.set_ylabel("t")
+            plot_idx += 1
+
+    fig.suptitle(title, fontsize=14)
+    plt.tight_layout()
+
+    return fig

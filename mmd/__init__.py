@@ -13,7 +13,7 @@ from mmd.kernel.base import Kernel
 from mmd.kernel.gaussian import GaussianKernel
 from mmd.kernel.polynomial import PolynomialKernel, LinearKernel, QuadraticKernel
 from mmd.spaces.base import HilbertBasis
-from mmd.spaces.L2 import L2Basis, L2CosineBasis, L2FourierBasis
+from mmd.spaces.L2 import L2Basis, L2CosineBasis, L2FourierBasis, L2TensorBasis2D
 from mmd.spaces.graph import GraphBasis, GraphLaplacianBasis
 from mmd.spaces.so3 import SO3Basis, SO3FourierBasis
 from mmd.mixture import GaussianMixtureModel, fit_gaussian_mixture_mmd
@@ -31,6 +31,10 @@ from mmd.visualization import (
     plot_graph_means_comparison,
     plot_training_history,
     plot_mixture_weights,
+    plot_l2_2d_surface,
+    plot_l2_2d_surfaces_grid,
+    plot_l2_2d_means_comparison,
+    plot_l2_2d_samples_by_component,
 )
 
 
