@@ -1,9 +1,9 @@
 import torch
 import math
 
-from mmd.spaces import L2CosineBasis
-from mmd.kernel import GaussianKernel
-from mmd import mmd2_empirical_vs_gaussian_mixture, GaussianMixtureModel, fit_gaussian_mixture_mmd
+from src.spaces import L2CosineBasis
+from src.kernel import GaussianKernel
+from src import mmd2_empirical_vs_gaussian_mixture, GaussianMixtureModel, fit_gaussian_mixture_mmd
 
 torch.manual_seed(0)
 

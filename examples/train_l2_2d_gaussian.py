@@ -24,14 +24,14 @@ import os
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from mmd import (
+from src import (
     GaussianKernel,
     GaussianMixtureModel,
     plot_training_history,
     plot_mixture_weights,
 )
-from mmd.spaces.L2 import L2TensorBasis2D
-from mmd.visualization import (
+from src.spaces.L2 import L2TensorBasis2D
+from src.visualization import (
     plot_l2_2d_surfaces_grid,
     plot_l2_2d_means_comparison,
     plot_l2_2d_samples_by_component,
