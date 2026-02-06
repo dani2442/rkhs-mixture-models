@@ -19,6 +19,7 @@ from src.spaces.so3 import SO3Basis, SO3FourierBasis
 from src.mixture import GaussianMixtureModel, fit_gaussian_mixture_mmd
 from src.data import (
     generate_l2_mixture_data,
+    generate_l2_2d_gaussian_data,
     generate_graph_mixture_data,
     generate_l2_sine_cosine_data,
     generate_so3_mixture_data,
@@ -177,6 +178,7 @@ __all__ = [
     "SO3FourierBasis",
     # Data generation
     "generate_l2_mixture_data",
+    "generate_l2_2d_gaussian_data",
     "generate_graph_mixture_data",
     "generate_l2_sine_cosine_data",
     "generate_so3_mixture_data",
