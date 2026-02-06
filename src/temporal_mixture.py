@@ -115,7 +115,7 @@ class NeuralODETimeWeights(nn.Module):
 
         self.num_components = num_components
         self.num_times = t_grid.shape[0]
-        self.temp = 3.0
+        self.temp = 1.0
 
         self.register_buffer(
             "t_grid", t_grid.to(device=device, dtype=dtype), persistent=False
