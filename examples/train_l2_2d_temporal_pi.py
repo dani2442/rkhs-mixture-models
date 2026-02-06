@@ -298,7 +298,7 @@ def main() -> None:
 
     # Data parameters (same synthetic setup as train_l2_2d_gaussian.py)
     n_samples = args.n_samples
-    n_components = 4
+    n_components = 10
     grid_size_s = args.grid_size_s
     grid_size_t = args.grid_size_t
     T = 1.0
