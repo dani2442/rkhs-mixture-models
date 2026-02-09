@@ -15,6 +15,7 @@ from src.kernel.polynomial import PolynomialKernel, LinearKernel, QuadraticKerne
 from src.spaces.base import HilbertBasis
 from src.spaces.L2 import L2Basis, L2CosineBasis, L2FourierBasis, L2TensorBasis2D
 from src.spaces.graph import GraphBasis, GraphLaplacianBasis
+from src.spaces.Rn import CanonicalBasis, DiscreteCosineBasis
 from src.spaces.so3 import SO3Basis, SO3FourierBasis
 from src.mixture import GaussianMixtureModel, fit_gaussian_mixture_mmd
 from src.data import (
@@ -176,6 +177,8 @@ __all__ = [
     "GraphLaplacianBasis",
     "SO3Basis",
     "SO3FourierBasis",
+    "CanonicalBasis",
+    "DiscreteCosineBasis",
     # Data generation
     "generate_l2_mixture_data",
     "generate_l2_2d_gaussian_data",

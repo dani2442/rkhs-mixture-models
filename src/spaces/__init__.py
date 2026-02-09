@@ -5,6 +5,7 @@ from .base import HilbertBasis
 from .L2 import L2Basis, L2CosineBasis, L2FourierBasis, L2TensorBasis2D
 from .graph import GraphBasis, GraphLaplacianBasis
 from .so3 import SO3Basis, SO3FourierBasis
+from .Rn import CanonicalBasis, DiscreteCosineBasis
 
 __all__ = [
     "HilbertBasis",
@@ -16,4 +17,6 @@ __all__ = [
     "GraphLaplacianBasis",
     "SO3Basis",
     "SO3FourierBasis",
+    "CanonicalBasis",
+    "DiscreteCosineBasis",
 ]
