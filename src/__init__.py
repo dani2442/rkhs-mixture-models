@@ -9,28 +9,34 @@ This package provides:
 import torch
 from typing import Tuple, Optional, Union
 
-from mmd.kernel.base import Kernel
-from mmd.kernel.gaussian import GaussianKernel
-from mmd.kernel.polynomial import PolynomialKernel, LinearKernel, QuadraticKernel
-from mmd.spaces.base import HilbertBasis
-from mmd.spaces.L2 import L2Basis, L2CosineBasis, L2FourierBasis
-from mmd.spaces.graph import GraphBasis, GraphLaplacianBasis
-from mmd.spaces.so3 import SO3Basis, SO3FourierBasis
-from mmd.mixture import GaussianMixtureModel, fit_gaussian_mixture_mmd
-from mmd.data import (
+from src.kernel.base import Kernel
+from src.kernel.gaussian import GaussianKernel
+from src.kernel.polynomial import PolynomialKernel, LinearKernel, QuadraticKernel
+from src.spaces.base import HilbertBasis
+from src.spaces.L2 import L2Basis, L2CosineBasis, L2FourierBasis, L2TensorBasis2D
+from src.spaces.graph import GraphBasis, GraphLaplacianBasis
+from src.spaces.Rn import CanonicalBasis, DiscreteCosineBasis
+from src.spaces.so3 import SO3Basis, SO3FourierBasis
+from src.mixture import GaussianMixtureModel, fit_gaussian_mixture_mmd
+from src.data import (
     generate_l2_mixture_data,
+    generate_l2_2d_gaussian_data,
     generate_graph_mixture_data,
     generate_l2_sine_cosine_data,
     generate_so3_mixture_data,
     generate_so3_rotation_matrix_data,
 )
-from mmd.visualization import (
+from src.visualization import (
     plot_l2_trajectories,
     plot_l2_means_comparison,
     plot_graph_signals,
     plot_graph_means_comparison,
     plot_training_history,
     plot_mixture_weights,
+    plot_l2_2d_surface,
+    plot_l2_2d_surfaces_grid,
+    plot_l2_2d_means_comparison,
+    plot_l2_2d_samples_by_component,
 )
 
 
@@ -171,8 +177,11 @@ __all__ = [
     "GraphLaplacianBasis",
     "SO3Basis",
     "SO3FourierBasis",
+    "CanonicalBasis",
+    "DiscreteCosineBasis",
     # Data generation
     "generate_l2_mixture_data",
+    "generate_l2_2d_gaussian_data",
     "generate_graph_mixture_data",
     "generate_l2_sine_cosine_data",
     "generate_so3_mixture_data",

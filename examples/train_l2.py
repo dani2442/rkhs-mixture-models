@@ -16,7 +16,7 @@ import os
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from mmd import (
+from src import (
     L2CosineBasis,
     GaussianKernel,
     GaussianMixtureModel,
@@ -235,10 +235,18 @@ def main():
     fig5.suptitle("Samples from Fitted Gaussian Mixture", fontsize=14)
     plt.tight_layout()
     
-    print("\n[7] Displaying plots...")
-    plt.show()
+    # Save figures as PDF for paper
+    print("\n[7] Saving figures as PDF...")
+    paper_images_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "paper", "images")
+    os.makedirs(paper_images_dir, exist_ok=True)
     
-    print("\nDone!")
+    fig1.savefig(os.path.join(paper_images_dir, "l2_trajectories.pdf"), format="pdf", bbox_inches="tight")
+    fig2.savefig(os.path.join(paper_images_dir, "l2_means_dim0.pdf"), format="pdf", bbox_inches="tight")
+    fig4.savefig(os.path.join(paper_images_dir, "l2_training_summary.pdf"), format="pdf", bbox_inches="tight")
+    fig5.savefig(os.path.join(paper_images_dir, "l2_samples.pdf"), format="pdf", bbox_inches="tight")
+    print(f"   Saved figures to {paper_images_dir}")
+
+    print("\n[8] Displaying plots...")
 
 
 if __name__ == "__main__":

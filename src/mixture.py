@@ -328,6 +328,142 @@ class GaussianMixtureModel(nn.Module):
         mmd2, _ = self.compute_mmd2(X, kernel, compute_const_term)
         return mmd2
 
+    def log_component_densities(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Compute log p_k^{(M)}(x) for each component k and data point x.
+
+        For the projected Gaussian N(m_k, K_k) with positive-definite K_k,
+        the density w.r.t. Lebesgue measure on R^M is:
+            p_k(x) = (2π)^{-M/2} det(K_k)^{-1/2}
+                     exp{-1/2 (x - m_k)^T K_k^{-1} (x - m_k)}
+
+        We compute this in log-domain for numerical stability.
+
+        Args:
+            X: Data coefficients, shape (n, M)
+
+        Returns:
+            log_densities: shape (n, K), where entry [i,k] = log p_k(X[i])
+        """
+        n = X.shape[0]
+        K = self.num_components
+        M = self.coeff_dim
+
+        pi = self.pi  # (K,)
+        m = self.mean  # (K, M)
+        cov = self.covariance  # (K, M, M)
+
+        log_densities = torch.empty(n, K, device=self.device, dtype=self.dtype)
+
+        for k in range(K):
+            # Mahalanobis distance: (x - m_k)^T K_k^{-1} (x - m_k)
+            diff = X - m[k]  # (n, M)
+            cov_k = cov[k]  # (M, M)
+
+            # Add small regularization for numerical stability
+            cov_k_reg = cov_k + 1e-6 * torch.eye(M, device=self.device, dtype=self.dtype)
+
+            # Cholesky for stable inverse and log-determinant
+            L = torch.linalg.cholesky(cov_k_reg)  # K_k = L L^T
+            # Solve L z = diff^T, then mahal^2 = ||z||^2
+            z = torch.linalg.solve_triangular(L, diff.T, upper=False)  # (M, n)
+            mahal_sq = (z ** 2).sum(dim=0)  # (n,)
+
+            # log det(K_k) = 2 * sum(log(diag(L)))
+            log_det = 2.0 * torch.log(torch.diag(L)).sum()
+
+            # log p_k(x) = -M/2 log(2π) - 1/2 log det(K_k) - 1/2 mahal^2
+            log_densities[:, k] = (
+                -0.5 * M * torch.log(torch.tensor(2.0 * torch.pi, device=self.device, dtype=self.dtype))
+                - 0.5 * log_det
+                - 0.5 * mahal_sq
+            )
+
+        return log_densities
+
+    def responsibilities(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Compute responsibilities γ_k(x) = P(Z=k | X=x) for each component.
+
+        The responsibility is the posterior probability that observation x
+        came from component k, given by Bayes' rule:
+            γ_k(x) = π_k p_k(x) / Σ_s π_s p_s(x)
+                   = d(π_k ν_k)/dQ (x)
+
+        This is the Radon-Nikodym derivative of the weighted component
+        measure π_k ν_k with respect to the mixture Q.
+
+        Uses log-sum-exp for numerical stability.
+
+        Args:
+            X: Data coefficients, shape (n, M)
+
+        Returns:
+            gamma: Responsibilities, shape (n, K), where γ[i,k] = P(Z=k | X=X_i)
+                   Each row sums to 1.
+        """
+        pi = self.pi  # (K,)
+        log_pi = torch.log(pi + 1e-10)  # (K,)
+
+        log_densities = self.log_component_densities(X)  # (n, K)
+
+        # log(π_k p_k(x)) = log π_k + log p_k(x)
+        log_weighted = log_pi.unsqueeze(0) + log_densities  # (n, K)
+
+        # γ_k(x) = exp(log π_k + log p_k(x) - log Σ_s π_s p_s(x))
+        # Use log-sum-exp for the denominator
+        log_sum = torch.logsumexp(log_weighted, dim=1, keepdim=True)  # (n, 1)
+        log_gamma = log_weighted - log_sum  # (n, K)
+
+        return torch.exp(log_gamma)
+
+    def log_likelihood(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the log-likelihood of the data under the mixture model.
+
+        For the projected observations x_1, ..., x_n in R^M, the log-likelihood is:
+            ℓ^{(M)}(π, m, K) = Σ_i log(Σ_k π_k p_k^{(M)}(x_i))
+
+        This converges to the infinite-dimensional log-likelihood as M → ∞
+        under mild integrability conditions (martingale convergence argument).
+
+        Uses log-sum-exp for numerical stability.
+
+        Args:
+            X: Data coefficients, shape (n, M)
+
+        Returns:
+            log_lik: Scalar tensor, the total log-likelihood Σ_i log q(x_i)
+        """
+        pi = self.pi  # (K,)
+        log_pi = torch.log(pi + 1e-10)  # (K,)
+
+        log_densities = self.log_component_densities(X)  # (n, K)
+
+        # log(Σ_k π_k p_k(x)) = logsumexp_k(log π_k + log p_k(x))
+        log_weighted = log_pi.unsqueeze(0) + log_densities  # (n, K)
+        log_mixture_density = torch.logsumexp(log_weighted, dim=1)  # (n,)
+
+        return log_mixture_density.sum()
+
+    def per_sample_log_likelihood(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Compute per-sample log-likelihood log q(x_i) for each data point.
+
+        Args:
+            X: Data coefficients, shape (n, M)
+
+        Returns:
+            log_lik: shape (n,), log q(X[i]) for each sample
+        """
+        pi = self.pi  # (K,)
+        log_pi = torch.log(pi + 1e-10)  # (K,)
+
+        log_densities = self.log_component_densities(X)  # (n, K)
+        log_weighted = log_pi.unsqueeze(0) + log_densities  # (n, K)
+
+        return torch.logsumexp(log_weighted, dim=1)  # (n,)
+
     def extra_repr(self) -> str:
         return (
             f"num_components={self.num_components}, "

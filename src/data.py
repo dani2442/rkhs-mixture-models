@@ -3,7 +3,10 @@ Synthetic data generators for testing MMD-based Gaussian mixture fitting.
 """
 import torch
 import math
+import numpy as np
 from typing import Tuple, Optional, List
+
+from .spaces.L2 import L2TensorBasis2D
 
 
 def generate_l2_mixture_data(
@@ -189,6 +192,183 @@ def generate_graph_mixture_data(
     }
 
     return X, assignments, adjacency, info
+
+
+def generate_l2_2d_gaussian_data(
+    n_samples: int,
+    n_components: int,
+    grid_size_s: int,
+    grid_size_t: int,
+    R_s: int,
+    R_t: int,
+    T: float = 1.0,
+    S: float = 1.0,
+    d: int = 1,
+    component_weights: Optional[torch.Tensor] = None,
+    seed: Optional[int] = None,
+    device: torch.device = torch.device("cpu"),
+    dtype: torch.dtype = torch.float64,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict]:
+    """
+    Generate L²([0,T]×[0,S]; R^d) functional data from Gaussian distributions.
+
+    Each component uses a distinct mean surface pattern and diagonal covariance
+    profile in the tensor-product coefficient space.
+    """
+    if seed is not None:
+        torch.manual_seed(seed)
+
+    M = R_s * R_t * d
+    basis = L2TensorBasis2D(
+        T=T,
+        S=S,
+        R_t=R_t,
+        R_s=R_s,
+        grid_size_t=grid_size_t,
+        grid_size_s=grid_size_s,
+        d=d,
+        device=device,
+        dtype=dtype,
+    )
+
+    s_grid, t_grid = basis.get_meshgrid()
+
+    if component_weights is None:
+        component_weights = (
+            torch.ones(n_components, device=device, dtype=dtype) / n_components
+        )
+
+    assignments = torch.multinomial(
+        component_weights.expand(n_samples, -1), num_samples=1
+    ).squeeze(-1)
+
+    true_mean_coeffs = torch.zeros(n_components, M, device=device, dtype=dtype)
+    for k in range(n_components):
+        for dim_idx in range(d):
+            for m in range(R_s):
+                for n in range(R_t):
+                    coeff_idx = dim_idx * R_s * R_t + m * R_t + n
+
+                    freq_s = (m + 1) / R_s
+                    freq_t = (n + 1) / R_t
+
+                    if k == 0:
+                        amplitude = 3.0 * np.exp(-3.0 * (freq_s + freq_t))
+                    elif k == 1:
+                        amplitude = (
+                            2.5
+                            * np.exp(-4.0 * np.abs(freq_s - freq_t))
+                            * np.exp(-2.0 * (freq_s + freq_t))
+                        )
+                    elif k == 2:
+                        amplitude = (
+                            2.0
+                            * np.abs(
+                                np.sin(3 * np.pi * freq_s)
+                                * np.sin(3 * np.pi * freq_t)
+                            )
+                            * np.exp(-1.5 * (freq_s + freq_t))
+                        )
+                    elif k == 3:
+                        r = np.sqrt(freq_s ** 2 + freq_t ** 2)
+                        amplitude = (
+                            2.8 * np.exp(-5.0 * r) * (1 + 0.5 * np.cos(4 * np.pi * r))
+                        )
+                    elif k == 4:
+                        amplitude = (
+                            2.2
+                            * np.exp(-8.0 * (freq_s - 0.3) ** 2)
+                            * np.exp(-2.0 * freq_t)
+                        )
+                    elif k == 5:
+                        amplitude = (
+                            2.0
+                            * np.abs(np.sin(2 * np.pi * freq_s))
+                            * np.exp(-3.0 * freq_t)
+                        )
+                    elif k == 6:
+                        amplitude = 3.5 * np.exp(-10.0 * (freq_s ** 2 + freq_t ** 2))
+                    else:
+                        amplitude = (
+                            1.8
+                            * (
+                                np.sin(4 * np.pi * freq_s)
+                                + np.cos(3 * np.pi * freq_t)
+                            )
+                            * np.exp(-2.0 * (freq_s + freq_t))
+                        )
+
+                    phase = np.pi * k / 4 + np.pi * dim_idx / (d + 1)
+                    sign = 1 if (k + dim_idx + m) % 3 != 0 else -1
+                    true_mean_coeffs[k, coeff_idx] = sign * amplitude * np.cos(
+                        phase + (m + n) * np.pi / (k + 2)
+                    )
+
+    true_variances = torch.zeros(n_components, M, device=device, dtype=dtype)
+    for k in range(n_components):
+        for dim_idx in range(d):
+            for m in range(R_s):
+                for n in range(R_t):
+                    coeff_idx = dim_idx * R_s * R_t + m * R_t + n
+
+                    freq_s = (m + 1) / R_s
+                    freq_t = (n + 1) / R_t
+
+                    if k == 0:
+                        var = 0.02 + 0.01 * (freq_s + freq_t)
+                    elif k == 1:
+                        var = 0.4 * np.exp(-3.0 * (freq_s + freq_t)) + 0.02
+                    elif k == 2:
+                        var = 0.1 * (
+                            1
+                            + 0.6
+                            * np.abs(
+                                np.sin(2 * np.pi * freq_s)
+                                * np.sin(2 * np.pi * freq_t)
+                            )
+                        )
+                    elif k == 3:
+                        var = 0.3 + 0.1 * (freq_s + freq_t)
+                    elif k == 4:
+                        var = 0.05 + 0.25 * np.exp(
+                            -10.0 * ((freq_s - 0.4) ** 2 + (freq_t - 0.4) ** 2)
+                        )
+                    elif k == 5:
+                        var = 0.03 + 0.2 * (freq_s * freq_t)
+                    elif k == 6:
+                        var = 0.08 if (freq_s < 0.5 and freq_t < 0.5) else 0.25
+                    else:
+                        var = 0.08 + 0.15 * np.abs(np.sin(4 * np.pi * freq_s)) * (
+                            1 - 0.5 * freq_t
+                        )
+
+                    dim_scale = 1.0 + 0.3 * dim_idx
+                    true_variances[k, coeff_idx] = var * dim_scale
+
+    X_coeffs = torch.zeros(n_samples, M, device=device, dtype=dtype)
+    for i in range(n_samples):
+        k = assignments[i].item()
+        std = torch.sqrt(true_variances[k])
+        X_coeffs[i] = true_mean_coeffs[k] + std * torch.randn(
+            M, device=device, dtype=dtype
+        )
+
+    X_raw = basis.reconstruct(X_coeffs)
+    true_means = basis.reconstruct(true_mean_coeffs)
+
+    info = {
+        "component_weights": component_weights,
+        "true_mean_coeffs": true_mean_coeffs,
+        "true_variances": true_variances,
+        "true_means": true_means,
+        "s_grid": s_grid,
+        "t_grid": t_grid,
+        "T": T,
+        "S": S,
+        "basis": basis,
+    }
+
+    return X_raw, X_coeffs, assignments, info
 
 
 def generate_l2_sine_cosine_data(

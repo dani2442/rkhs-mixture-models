@@ -17,7 +17,7 @@ import os
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from mmd import (
+from src import (
     GraphLaplacianBasis,
     GaussianKernel,
     GaussianMixtureModel,
@@ -272,8 +272,19 @@ def main():
     ax5.set_title("Graph Laplacian Eigenvalue Spectrum (First {} Eigenvalues)".format(num_eigenvectors))
     ax5.grid(True, alpha=0.3, axis="y")
     plt.tight_layout()
+
+    # Save figures as PDF for paper
+    print("\n[6] Saving figures as PDF...")
+    paper_images_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "paper", "images")
+    os.makedirs(paper_images_dir, exist_ok=True)
     
-    print("\n[6] Displaying plots...")
+    if HAS_NETWORKX:
+        fig1.savefig(os.path.join(paper_images_dir, "graph_samples.pdf"), format="pdf", bbox_inches="tight")
+        fig2.savefig(os.path.join(paper_images_dir, "graph_means_comparison.pdf"), format="pdf", bbox_inches="tight")
+    fig3.savefig(os.path.join(paper_images_dir, "graph_training_summary.pdf"), format="pdf", bbox_inches="tight")
+    print(f"   Saved figures to {paper_images_dir}")
+
+    print("\n[7] Displaying plots...")
     plt.show()
     
     print("\nDone!")
