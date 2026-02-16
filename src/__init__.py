@@ -15,6 +15,7 @@ from src.kernel.polynomial import PolynomialKernel, LinearKernel, QuadraticKerne
 from src.spaces.base import HilbertBasis
 from src.spaces.L2 import L2Basis, L2CosineBasis, L2FourierBasis, L2TensorBasis2D
 from src.spaces.graph import GraphBasis, GraphLaplacianBasis
+from src.spaces.graph_embedding import WLHashFingerprint
 from src.spaces.Rn import CanonicalBasis, DiscreteCosineBasis
 from src.spaces.so3 import SO3Basis, SO3FourierBasis
 from src.mixture import GaussianMixtureModel, fit_gaussian_mixture_mmd
@@ -25,6 +26,7 @@ from src.data import (
     generate_l2_sine_cosine_data,
     generate_so3_mixture_data,
     generate_so3_rotation_matrix_data,
+    download_ntu_skeleton,
 )
 from src.visualization import (
     plot_l2_trajectories,
@@ -179,6 +181,7 @@ __all__ = [
     "SO3FourierBasis",
     "CanonicalBasis",
     "DiscreteCosineBasis",
+    "WLHashFingerprint",
     # Data generation
     "generate_l2_mixture_data",
     "generate_l2_2d_gaussian_data",
@@ -186,6 +189,7 @@ __all__ = [
     "generate_l2_sine_cosine_data",
     "generate_so3_mixture_data",
     "generate_so3_rotation_matrix_data",
+    "download_ntu_skeleton",
     # Visualization
     "plot_l2_trajectories",
     "plot_l2_means_comparison",

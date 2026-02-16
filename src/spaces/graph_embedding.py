@@ -1,3 +1,9 @@
+"""
+Deterministic graph embedding via Weisfeiler-Leman hashing (Morgan/ECFP-like).
+
+Provides a fixed-dimensional, permutation-invariant fingerprint for graphs
+(e.g. molecular graphs from PyG).
+"""
 import hashlib
 from typing import List, Optional, Tuple
 
@@ -128,8 +134,12 @@ class WLHashFingerprint(torch.nn.Module):
         return self._embed_one(data)
 
 
+
+
 # ---- Example usage ----
 if __name__ == "__main__":
+    from src.spaces.graph_embedding import WLHashFingerprint  # noqa: F401
+    from torch_geometric.data import Batch
     from torch_geometric.datasets import MoleculeNet
 
     # Example: ESOL provides PyG Data objects (with node/edge features)
