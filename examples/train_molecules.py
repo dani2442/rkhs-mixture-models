@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from torch_geometric.data import Batch
 from torch_geometric.datasets import MoleculeNet
 
-from examples.test_graph_embedding import WLHashFingerprint
+from src.spaces.graph_embedding import WLHashFingerprint
 from src import (
     DiscreteCosineBasis,
     GaussianKernel,

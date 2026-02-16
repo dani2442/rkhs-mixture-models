@@ -10,6 +10,7 @@ Usage:
 from __future__ import annotations
 
 import glob
+import os
 import random
 from pathlib import Path
 from typing import Optional
@@ -297,7 +298,9 @@ if __name__ == "__main__":
     # ── Grid of samples ───────────────────────────────────────────────────
     random.seed(42)
     fig_grid = plot_multi_sample_grid(skeleton_files, num_samples=6, num_snapshots=10)
-    out_grid = "examples/ntu_skeleton_samples.png"
+    paper_images_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "paper", "images")
+    os.makedirs(paper_images_dir, exist_ok=True)
+    out_grid = os.path.join(paper_images_dir, "ntu_skeleton_samples.png")
     fig_grid.savefig(out_grid, dpi=180, bbox_inches="tight")
     print(f"Saved grid → {out_grid}")
 
@@ -308,7 +311,7 @@ if __name__ == "__main__":
     fig_single = plot_skeleton_sequence(
         frames, title=f"{label}  ({Path(sample_path).stem})", num_snapshots=12
     )
-    out_single = "examples/ntu_skeleton_single.png"
+    out_single = os.path.join(paper_images_dir, "ntu_skeleton_single.png")
     fig_single.savefig(out_single, dpi=180, bbox_inches="tight")
     print(f"Saved single → {out_single}")
 

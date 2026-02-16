@@ -9,6 +9,7 @@ where L is the graph Laplacian.
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -133,10 +134,13 @@ def main():
         )
     
     plt.tight_layout()
-    plt.savefig('examples/graph_heat_trace.png', dpi=150, bbox_inches='tight', 
+    paper_images_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "paper", "images")
+    os.makedirs(paper_images_dir, exist_ok=True)
+    out_path = os.path.join(paper_images_dir, 'graph_heat_trace.png')
+    plt.savefig(out_path, dpi=150, bbox_inches='tight', 
                 facecolor='white', edgecolor='none')
     
-    print("Figure saved to 'examples/graph_heat_trace.png'")
+    print(f"Figure saved to '{out_path}'")
 
 
 if __name__ == "__main__":
