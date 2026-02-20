@@ -20,12 +20,12 @@ We fit the mixture by minimizing $\text{MMD}^2(P, Q)$, which admits **exact clos
 ### How It Works
 
 1. **Project** data from the Hilbert space onto a finite-dimensional orthonormal basis (cosine, Fourier, graph Laplacian eigenvectors, Wigner D-matrices, etc.)
-2. **Compute** the MMD² objective using closed-form expressions for the kernel expectations $J_{i,k} = \mathbb{E}_{y \sim \nu_k}[\kappa(X_i, y)]$ and $I_{k,s} = \mathbb{E}_{y \sim \nu_k, y' \sim \nu_s}[\kappa(y, y')]$
+2. **Compute** the MMD² objective using closed-form expressions for the kernel expectations 
+$$J_{i,k} = \mathbb{E}_{y \sim \nu_k}[\kappa(X_i, y)] \quad \text{and} \quad I_{k,s} = \mathbb{E}_{y \sim \nu_k, y' \sim \nu_s}[\kappa(y, y')]$$
 3. **Optimize** mixture parameters (weights, means, covariances) via gradient descent on the differentiable MMD² loss
 
 All quantities converge to their infinite-dimensional counterparts as the truncation dimension $M \to \infty$.
 
----
 
 ## Features
 
@@ -44,16 +44,15 @@ All quantities converge to their infinite-dimensional counterparts as the trunca
 - **Initialization**: Random and k-means++ initialization strategies
 - **Fully differentiable**: End-to-end gradient-based optimization via PyTorch autograd
 
----
 
 ## Installation
 
 Requires Python ≥ 3.11.
 
 ```bash
-git clone https://github.com/<your-username>/mixture.git
+git clone https://github.com/dani2442/continuous_GMM.git mixture
 cd mixture
-pip install -e .
+uv sync
 ```
 
 ### Dependencies
@@ -68,7 +67,6 @@ For molecular experiments:
 For temporal mixture models:
 - `torchdiffeq`
 
----
 
 ## Quick Start
 
@@ -127,7 +125,6 @@ mmd2, stats = mmd2_empirical_vs_gaussian_mixture(
 )
 ```
 
----
 
 ## Examples
 
@@ -153,7 +150,6 @@ python examples/train_so3.py
 python examples/train_graph.py
 ```
 
----
 
 ## Architecture
 
@@ -214,7 +210,6 @@ Each basis provides `project()` (data → coefficients) and optionally `reconstr
 - Covariances parameterized as diagonal exp-variances or Cholesky factors (positive definiteness)
 - Methods: `compute_mmd2()`, `sample()`, `sample_functions()`, `log_likelihood()`, `responsibilities()`
 
----
 
 ## Mathematical Background
 
@@ -242,7 +237,6 @@ $$
 \pi^* = I^{-1} J - \frac{\mathbf{1}^\top I^{-1} J - 1}{\mathbf{1}^\top I^{-1} \mathbf{1}} I^{-1} \mathbf{1}
 $$
 
----
 
 ## Configuration Reference
 
@@ -295,7 +289,6 @@ All runs are CPU-only and complete in minutes on a standard laptop.
 | $L^2(\text{SO}(3))$ | 200 | 3 | 84 | ~$10^{-2}$ | `train_so3.py` |
 | Graph signals | 150 | 3 | 15 | ~$10^{-4}$ | `train_graph.py` |
 
----
 
 ## Citation
 
@@ -307,7 +300,6 @@ All runs are CPU-only and complete in minutes on a standard laptop.
 }
 ```
 
----
 
 ## License
 
