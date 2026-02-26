@@ -11,10 +11,9 @@ wheels/
 # Virtual environments
 .venv
 csvs
+data/
 *.DS_Store
 .vscode
 Results_MedicalData
 Results_TimeSeries
 .env
-
-!data/glucodensities
