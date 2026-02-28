@@ -2,8 +2,8 @@
 """
 Compare scikit-learn clustering algorithms with MMD-based clustering.
 
-This example mirrors scikit-learn's toy benchmark and adds one extra column:
-an MMD-trained Gaussian mixture using a finite-dimensional quadratic kernel.
+This example mirrors scikit-learn's toy benchmark and adds two MMD columns:
+finite-dimensional quadratic-kernel MMD and Gaussian-kernel MMD.
 """
 import argparse
 import os
@@ -22,7 +22,7 @@ from sklearn.preprocessing import StandardScaler
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import QuadraticKernel, fit_gaussian_mixture_mmd
+from src import GaussianKernel, QuadraticKernel, fit_gaussian_mixture_mmd
 
 
 def make_toy_datasets(n_samples: int, seed: int):
@@ -134,14 +134,30 @@ def make_toy_datasets(n_samples: int, seed: int):
 def run_mmd_clustering(
     X: np.ndarray,
     n_clusters: int,
+    kernel_name: str,
     kernel_c: float,
+    gaussian_sigma: float,
     mmd_epochs: int,
     mmd_lr: float,
     mmd_seed: int,
+    covariance_type: str,
 ) -> np.ndarray:
     torch.manual_seed(mmd_seed)
     X_torch = torch.as_tensor(X, dtype=torch.float64)
-    kernel = QuadraticKernel(c=kernel_c)
+    if kernel_name == "quadratic":
+        kernel = QuadraticKernel(c=kernel_c)
+    elif kernel_name == "gaussian":
+        if gaussian_sigma > 0.0:
+            sigma = gaussian_sigma
+        else:
+            pairwise_dist = torch.cdist(X_torch, X_torch)
+            iu = torch.triu_indices(pairwise_dist.shape[0], pairwise_dist.shape[1], offset=1)
+            upper = pairwise_dist[iu[0], iu[1]]
+            positive = upper[upper > 0]
+            sigma = torch.median(positive).item() if positive.numel() > 0 else 1.0
+        kernel = GaussianKernel(sigma=max(float(sigma), 1e-6))
+    else:
+        raise ValueError(f"Unknown kernel_name: {kernel_name}")
 
     model, _ = fit_gaussian_mixture_mmd(
         X=X_torch,
@@ -149,7 +165,7 @@ def run_mmd_clustering(
         kernel=kernel,
         num_epochs=mmd_epochs,
         lr=mmd_lr,
-        covariance_type="spherical",
+        covariance_type=covariance_type,
         init_method="kmeans++",
         verbose=False,
     )
@@ -183,7 +199,7 @@ def benchmark(args: argparse.Namespace):
     dataset_specs = make_toy_datasets(n_samples=args.n_samples, seed=args.seed)
     has_hdbscan = hasattr(cluster, "HDBSCAN")
 
-    n_cols = 12 if has_hdbscan else 11
+    n_cols = 13 if has_hdbscan else 12
     fig = plt.figure(figsize=(n_cols * 2.1 + 1.0, len(dataset_specs) * 2.1 + 1.0))
     plt.subplots_adjust(
         left=0.03,
@@ -195,10 +211,11 @@ def benchmark(args: argparse.Namespace):
     )
 
     print("=" * 80)
-    print("Scikit-learn toy clustering benchmark + MMD (Quadratic finite-dimensional kernel)")
+    print("Scikit-learn toy clustering benchmark + MMD")
     print("=" * 80)
     print(f"n_samples={args.n_samples}, mmd_epochs={args.mmd_epochs}, mmd_lr={args.mmd_lr}")
-    print(f"kernel=QuadraticKernel(c={args.kernel_c})")
+    print(f"MMD kernels: Quadratic(c={args.kernel_c}) and Gaussian(sigma={args.gaussian_sigma})")
+    print(f"MMD covariance_type={args.mmd_covariance_type}")
     if not has_hdbscan:
         print("HDBSCAN is unavailable in this scikit-learn version; skipping that column.")
 
@@ -278,20 +295,24 @@ def benchmark(args: argparse.Namespace):
                 ("BIRCH", birch),
                 ("Gaussian\nMixture", gmm),
                 ("MMD\nQuadratic", None),
+                ("MMD\nGaussian", None),
             ]
         )
 
         for name, algorithm in algorithm_list:
             t0 = time.perf_counter()
 
-            if name == "MMD\nQuadratic":
+            if name in {"MMD\nQuadratic", "MMD\nGaussian"}:
                 y_pred = run_mmd_clustering(
                     X=X,
                     n_clusters=params["n_clusters"],
+                    kernel_name="quadratic" if name == "MMD\nQuadratic" else "gaussian",
                     kernel_c=args.kernel_c,
+                    gaussian_sigma=args.gaussian_sigma,
                     mmd_epochs=args.mmd_epochs,
                     mmd_lr=args.mmd_lr,
                     mmd_seed=args.mmd_seed,
+                    covariance_type=args.mmd_covariance_type,
                 )
             else:
                 with warnings.catch_warnings():
@@ -307,6 +328,11 @@ def benchmark(args: argparse.Namespace):
                         message="Graph is not fully connected, spectral embedding"
                         + " may not work as expected.",
                         category=UserWarning,
+                    )
+                    warnings.filterwarnings(
+                        "ignore",
+                        message="The default value of `copy` will change from False to True in 1.10.",
+                        category=FutureWarning,
                     )
                     algorithm.fit(X)
 
@@ -362,7 +388,9 @@ def benchmark(args: argparse.Namespace):
             plot_num += 1
 
     if args.save_path:
-        os.makedirs(os.path.dirname(args.save_path), exist_ok=True)
+        save_dir = os.path.dirname(args.save_path)
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
         fig.savefig(args.save_path, format="pdf", bbox_inches="tight")
         print(f"\nSaved comparison figure to {args.save_path}")
 
@@ -394,8 +422,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=30)
     parser.add_argument("--mmd-seed", type=int, default=42)
     parser.add_argument("--mmd-epochs", type=int, default=200)
-    parser.add_argument("--mmd-lr", type=float, default=0.05)
+    parser.add_argument("--mmd-lr", type=float, default=0.1)
     parser.add_argument("--kernel-c", type=float, default=1.0)
+    parser.add_argument(
+        "--gaussian-sigma",
+        type=float,
+        default=0.0,
+        help="Gaussian kernel bandwidth for MMD Gaussian. If <= 0, use median heuristic per dataset.",
+    )
+    parser.add_argument(
+        "--mmd-covariance-type",
+        type=str,
+        default="full",
+        choices=["diagonal", "spherical", "full"],
+    )
     parser.add_argument(
         "--save-path",
         type=str,

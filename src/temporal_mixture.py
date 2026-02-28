@@ -144,7 +144,7 @@ class TemporalGaussianMixtureModel(nn.Module):
         num_components: int,
         coeff_dim: int,
         time_weight_model: nn.Module,
-        covariance_type: Literal["diagonal", "spherical"] = "diagonal",
+        covariance_type: Literal["diagonal", "spherical", "full"] = "diagonal",
         device: torch.device = torch.device("cpu"),
         dtype: torch.dtype = torch.float64,
     ):
