@@ -43,6 +43,8 @@ from src.visualization import (
     plot_glucodensity_variance,
     plot_cluster_probabilities_by_group,
     plot_ternary_simplex_evolution,
+    plot_ternary_simplex_grid,
+    plot_ternary_simplex_interactive,
 )
 
 

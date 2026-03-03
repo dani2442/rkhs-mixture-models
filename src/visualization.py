@@ -773,7 +773,6 @@ def plot_glucodensity_temporal_comparison(
     pi_ode_np: np.ndarray,
     recon_basis_np: np.ndarray,
     recon_ode_np: np.ndarray,
-    median_treatment_days: float,
     out_dir: str = ".",
     show: bool = True,
 ) -> "plt.Figure":
@@ -785,18 +784,18 @@ def plot_glucodensity_temporal_comparison(
       Row 1: [Basis pi(t)]             [NeuralODE pi(t)]
       Row 2: [Basis mean curves]       [NeuralODE mean curves]
 
-    Temporal axes show approximate treatment days or weeks.
+    ``t_grid_np`` should contain actual day values (not normalized).
     """
     K = pi_basis_np.shape[1]
 
-    # Map normalized t → treatment days; switch to weeks if > 30 days
-    days = t_grid_np * median_treatment_days
-    use_weeks = median_treatment_days > 30
+    # Switch to weeks if the day range exceeds 30 days
+    day_span = float(t_grid_np[-1] - t_grid_np[0])
+    use_weeks = day_span > 30
     if use_weeks:
-        time_axis = days / 7.0
+        time_axis = t_grid_np / 7.0
         time_label = "Treatment week (approx.)"
     else:
-        time_axis = days
+        time_axis = t_grid_np
         time_label = "Treatment day (approx.)"
 
     fig, axes = plt.subplots(3, 2, figsize=(14, 15))
@@ -1354,3 +1353,429 @@ def plot_ternary_simplex_evolution(
         plt.close(fig)
 
     return fig
+
+
+# ---------------------------------------------------------------------------
+# Per-patient simplex grid (static, 5×5)
+# ---------------------------------------------------------------------------
+
+
+def plot_ternary_simplex_grid(
+    patient_posteriors: dict,
+    patient_time_norm: dict,
+    control_ids: list,
+    treatment_ids: list,
+    n_cols: int = 5,
+    n_rows: int = 5,
+    out_dir: str = ".",
+    show: bool = True,
+) -> "plt.Figure":
+    """
+    Plot a grid of individual ternary simplex subplots, one per patient.
+
+    Each patient traces an arrow path on the 2-simplex (equilateral
+    triangle).  Control patients are drawn in blue, treatment in red.
+    Cluster vertices are marked with labelled dots.
+
+    Selects up to ``n_rows * n_cols`` patients (balanced between groups).
+    """
+    from matplotlib.lines import Line2D
+
+    control_ids_set = set(control_ids)
+    treatment_ids_set = set(treatment_ids)
+
+    K = next(iter(patient_posteriors.values())).shape[1]
+    if K != 3:
+        raise ValueError(f"Ternary plot requires K=3, got K={K}")
+
+    # Equilateral triangle vertices
+    v1 = np.array([0.0, 0.0])
+    v2 = np.array([1.0, 0.0])
+    v3 = np.array([0.5, np.sqrt(3) / 2.0])
+    vertices = np.array([v1, v2, v3])
+
+    # Partition patients into control & treatment
+    ctrl_pids = [p for p in patient_posteriors if p in control_ids_set]
+    treat_pids = [p for p in patient_posteriors if p in treatment_ids_set]
+
+    # Balanced selection: roughly half control, half treatment
+    max_patients = n_rows * n_cols
+    n_ctrl = min(len(ctrl_pids), max_patients // 2)
+    n_treat = min(len(treat_pids), max_patients - n_ctrl)
+    n_ctrl = min(len(ctrl_pids), max_patients - n_treat)  # fill remainder
+
+    rng = np.random.RandomState(42)
+    selected = (
+        list(rng.choice(ctrl_pids, size=n_ctrl, replace=False))
+        + list(rng.choice(treat_pids, size=n_treat, replace=False))
+    )
+    rng.shuffle(selected)
+
+    fig, axes = plt.subplots(
+        n_rows, n_cols,
+        figsize=(3.2 * n_cols, 3.2 * n_rows),
+    )
+    axes_flat = axes.flatten()
+
+    cluster_colors = ["#2ca02c", "#ff7f0e", "#9467bd"]  # green, orange, purple
+
+    for idx, ax in enumerate(axes_flat):
+        # Draw triangle border
+        triangle = plt.Polygon(
+            [v1, v2, v3], fill=False, edgecolor="black", linewidth=1.2,
+        )
+        ax.add_patch(triangle)
+
+        # Cluster vertex dots and labels
+        for ci, (vx, label) in enumerate(
+            zip(vertices, ["C1", "C2", "C3"])
+        ):
+            ax.plot(
+                vx[0], vx[1], "o",
+                color=cluster_colors[ci], markersize=7, zorder=5,
+            )
+            dy = -0.08 if ci < 2 else 0.08
+            ax.text(
+                vx[0], vx[1] + dy, label,
+                ha="center", va="center", fontsize=7,
+                fontweight="bold", color=cluster_colors[ci],
+            )
+
+        if idx < len(selected):
+            pid = selected[idx]
+            posteriors = patient_posteriors[pid]
+            t_norm = patient_time_norm[pid]
+            pts = posteriors @ vertices  # (n_w, 2)
+
+            base_color = "tab:blue" if pid in control_ids_set else "tab:red"
+            group_label = "C" if pid in control_ids_set else "T"
+
+            # Draw arrows between consecutive points
+            n_pts = len(pts)
+            for i in range(n_pts - 1):
+                alpha = 0.15 + 0.75 * t_norm[min(i + 1, n_pts - 1)]
+                ax.annotate(
+                    "",
+                    xy=(pts[i + 1, 0], pts[i + 1, 1]),
+                    xytext=(pts[i, 0], pts[i, 1]),
+                    arrowprops=dict(
+                        arrowstyle="-|>",
+                        color=base_color,
+                        alpha=alpha,
+                        lw=0.8,
+                        mutation_scale=6,
+                    ),
+                )
+
+            # Start / end markers
+            if n_pts > 0:
+                ax.plot(pts[0, 0], pts[0, 1], "o", color=base_color,
+                        markersize=3, alpha=0.5, zorder=4)
+                ax.plot(pts[-1, 0], pts[-1, 1], "s", color=base_color,
+                        markersize=4, alpha=0.9, zorder=4)
+
+            ax.set_title(f"Pt {pid} ({group_label})", fontsize=8, pad=2)
+        else:
+            ax.set_visible(False)
+
+        ax.set_xlim(-0.12, 1.12)
+        ax.set_ylim(-0.15, v3[1] + 0.12)
+        ax.set_aspect("equal")
+        ax.axis("off")
+
+    # Global legend below the grid
+    legend_elements = [
+        Line2D([0], [0], color="tab:blue", lw=2, label="Control"),
+        Line2D([0], [0], color="tab:red", lw=2, label="Treatment"),
+        Line2D([0], [0], marker="o", color="gray", markerfacecolor="gray",
+               markersize=6, lw=0, label="Start"),
+        Line2D([0], [0], marker="s", color="gray", markerfacecolor="gray",
+               markersize=6, lw=0, label="End"),
+    ]
+    for ci, clabel in enumerate(["Cluster 1", "Cluster 2", "Cluster 3"]):
+        legend_elements.append(
+            Line2D([0], [0], marker="o", color=cluster_colors[ci],
+                   markerfacecolor=cluster_colors[ci], markersize=8,
+                   lw=0, label=clabel),
+        )
+
+    fig.legend(
+        handles=legend_elements, loc="lower center",
+        ncol=len(legend_elements), fontsize=9,
+        frameon=True, bbox_to_anchor=(0.5, -0.01),
+    )
+
+    fig.suptitle(
+        "Per-patient evolution in cluster probability simplex",
+        fontsize=14, y=1.01,
+    )
+    plt.tight_layout()
+
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "glucodensity_ternary_grid.pdf")
+    fig.savefig(out_path, format="pdf", bbox_inches="tight")
+    print(f"Saved figure: {out_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Interactive HTML simplex evolution (Plotly)
+# ---------------------------------------------------------------------------
+
+
+def plot_ternary_simplex_interactive(
+    patient_posteriors: dict,
+    patient_time_days: dict,
+    control_ids: list,
+    treatment_ids: list,
+    n_time_steps: int = 30,
+    trail_length: int = 6,
+    out_dir: str = ".",
+) -> str:
+    """
+    Interactive Plotly ternary plot with a time slider.
+
+    Each group (control / treatment) is shown as the in-group average
+    centroid (same binning as ``plot_cluster_probabilities_by_group``)
+    with a fading trail of recent positions.
+
+    Parameters
+    ----------
+    trail_length : int
+        Number of past time steps shown as a fading trail.
+
+    Returns the path to the saved HTML file.
+    """
+    import plotly.graph_objects as go
+
+    control_ids_set = set(control_ids)
+    treatment_ids_set = set(treatment_ids)
+
+    K = next(iter(patient_posteriors.values())).shape[1]
+    if K != 3:
+        raise ValueError(f"Ternary plot requires K=3, got K={K}")
+
+    # Collect (day, posterior_vector) for each group — same as
+    # plot_cluster_probabilities_by_group
+    control_data = []
+    treatment_data = []
+    for pid, posteriors in patient_posteriors.items():
+        days = patient_time_days[pid]
+        for i in range(len(days)):
+            entry = (days[i], posteriors[i])
+            if pid in control_ids_set:
+                control_data.append(entry)
+            elif pid in treatment_ids_set:
+                treatment_data.append(entry)
+
+    if not (control_data or treatment_data):
+        print("Warning: no data for ternary simplex plot.")
+        return ""
+
+    # Common time range for binning
+    all_days_list = [d for d, _ in control_data + treatment_data]
+    max_day = max(all_days_list)
+    bin_edges = np.linspace(0, max_day + 1e-9, n_time_steps + 1)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2.0
+
+    # Convert to weeks for display
+    t_weeks = bin_centers / 7.0
+
+    def _bin_and_average(data):
+        """Bin (day, posterior) pairs and average within each bin."""
+        binned = [[] for _ in range(n_time_steps)]
+        for day, post in data:
+            b = min(
+                int(np.searchsorted(bin_edges, day, side="right")) - 1,
+                n_time_steps - 1,
+            )
+            b = max(0, b)
+            binned[b].append(post)
+        means = np.full((n_time_steps, K), np.nan)
+        for b in range(n_time_steps):
+            if binned[b]:
+                arr = np.array(binned[b])
+                means[b] = arr.mean(axis=0)
+        # Forward-fill then backward-fill NaN bins so the trajectory
+        # is continuous (needed for trail visualisation)
+        for b in range(1, n_time_steps):
+            if np.isnan(means[b, 0]):
+                means[b] = means[b - 1]
+        for b in range(n_time_steps - 2, -1, -1):
+            if np.isnan(means[b, 0]):
+                means[b] = means[b + 1]
+        return means
+
+    ctrl_centroid = _bin_and_average(control_data)    # (n_time_steps, 3)
+    treat_centroid = _bin_and_average(treatment_data)  # (n_time_steps, 3)
+
+    # --- Build Plotly frames ---
+    # Every frame must have exactly 4 traces (matched by index) so that
+    # Plotly does not drop traces when animating between frames:
+    #   0: Control trail   1: Control head
+    #   2: Treatment trail  3: Treatment head
+    frames = []
+    for ti in range(n_time_steps):
+        trail_start = max(0, ti - trail_length + 1)
+
+        # --- Control trail + head ---
+        seg_a = ctrl_centroid[trail_start:ti + 1, 0]
+        seg_b = ctrl_centroid[trail_start:ti + 1, 1]
+        seg_c = ctrl_centroid[trail_start:ti + 1, 2]
+        # Trail (use duplicate point when only 1 sample so line is invisible
+        # but the trace still exists at the correct index)
+        if len(seg_a) >= 2:
+            trail_a, trail_b, trail_c = seg_a, seg_b, seg_c
+        else:
+            trail_a = np.array([seg_a[0], seg_a[0]])
+            trail_b = np.array([seg_b[0], seg_b[0]])
+            trail_c = np.array([seg_c[0], seg_c[0]])
+        ctrl_trail = go.Scatterternary(
+            a=trail_a, b=trail_b, c=trail_c,
+            mode="lines",
+            line=dict(color="royalblue", width=3),
+            opacity=0.45,
+            name="Control trail",
+            showlegend=False,
+            hoverinfo="skip",
+        )
+        hover_ctrl = (f"Control avg<br>Week {t_weeks[ti]:.1f}<br>"
+                      f"C1={seg_a[-1]:.2f} C2={seg_b[-1]:.2f} C3={seg_c[-1]:.2f}")
+        ctrl_head = go.Scatterternary(
+            a=[seg_a[-1]], b=[seg_b[-1]], c=[seg_c[-1]],
+            mode="markers",
+            marker=dict(size=12, color="royalblue", opacity=0.9,
+                        line=dict(width=1, color="white"),
+                        symbol="circle"),
+            name="Control",
+            text=[hover_ctrl],
+            hoverinfo="text",
+            showlegend=True,
+        )
+
+        # --- Treatment trail + head ---
+        seg_a = treat_centroid[trail_start:ti + 1, 0]
+        seg_b = treat_centroid[trail_start:ti + 1, 1]
+        seg_c = treat_centroid[trail_start:ti + 1, 2]
+        if len(seg_a) >= 2:
+            trail_a, trail_b, trail_c = seg_a, seg_b, seg_c
+        else:
+            trail_a = np.array([seg_a[0], seg_a[0]])
+            trail_b = np.array([seg_b[0], seg_b[0]])
+            trail_c = np.array([seg_c[0], seg_c[0]])
+        treat_trail = go.Scatterternary(
+            a=trail_a, b=trail_b, c=trail_c,
+            mode="lines",
+            line=dict(color="crimson", width=3),
+            opacity=0.45,
+            name="Treatment trail",
+            showlegend=False,
+            hoverinfo="skip",
+        )
+        hover_treat = (f"Treatment avg<br>Week {t_weeks[ti]:.1f}<br>"
+                       f"C1={seg_a[-1]:.2f} C2={seg_b[-1]:.2f} C3={seg_c[-1]:.2f}")
+        treat_head = go.Scatterternary(
+            a=[seg_a[-1]], b=[seg_b[-1]], c=[seg_c[-1]],
+            mode="markers",
+            marker=dict(size=12, color="crimson", opacity=0.9,
+                        line=dict(width=1, color="white"),
+                        symbol="diamond"),
+            name="Treatment",
+            text=[hover_treat],
+            hoverinfo="text",
+            showlegend=True,
+        )
+
+        frames.append(go.Frame(
+            data=[ctrl_trail, ctrl_head, treat_trail, treat_head],
+            name=f"{ti}",
+        ))
+
+    # Initial data (first frame)
+    initial_data = list(frames[0].data)
+
+    # Slider — labelled in weeks
+    sliders = [dict(
+        active=0,
+        currentvalue=dict(prefix="Week: ", suffix="", font=dict(size=14)),
+        pad=dict(b=10, t=50),
+        steps=[
+            dict(
+                method="animate",
+                args=[[f"{ti}"], dict(
+                    mode="immediate",
+                    frame=dict(duration=0, redraw=True),
+                    transition=dict(duration=0),
+                )],
+                label=f"{t_weeks[ti]:.1f}",
+            )
+            for ti in range(n_time_steps)
+        ],
+    )]
+
+    # Play / pause buttons — positioned in the upper right
+    updatemenus = [dict(
+        type="buttons",
+        showactive=False,
+        y=1.12, x=0.98, xanchor="right",
+        buttons=[
+            dict(
+                label="&#9654; Play",
+                method="animate",
+                args=[None, dict(
+                    frame=dict(duration=120, redraw=True),
+                    fromcurrent=True,
+                    transition=dict(duration=60),
+                )],
+            ),
+            dict(
+                label="&#9724; Pause",
+                method="animate",
+                args=[[None], dict(
+                    frame=dict(duration=0, redraw=False),
+                    mode="immediate",
+                    transition=dict(duration=0),
+                )],
+            ),
+        ],
+    )]
+
+    fig = go.Figure(
+        data=initial_data,
+        frames=frames,
+        layout=go.Layout(
+            ternary=dict(
+                sum=1,
+                aaxis=dict(title="Cluster 1", min=0, linewidth=2,
+                           ticks="outside"),
+                baxis=dict(title="Cluster 2", min=0, linewidth=2,
+                           ticks="outside"),
+                caxis=dict(title="Cluster 3", min=0, linewidth=2,
+                           ticks="outside"),
+            ),
+            title=dict(
+                text="Patient group evolution on cluster probability simplex",
+                font=dict(size=16),
+            ),
+            sliders=sliders,
+            updatemenus=updatemenus,
+            legend=dict(
+                x=0.02, y=0.98, bgcolor="rgba(255,255,255,0.8)",
+                bordercolor="gray", borderwidth=1,
+            ),
+            width=800,
+            height=750,
+        ),
+    )
+
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "glucodensity_ternary_interactive.html")
+    fig.write_html(out_path, include_plotlyjs="cdn")
+    print(f"Saved interactive plot: {out_path}")
+    return out_path
