@@ -874,6 +874,210 @@ def plot_glucodensity_temporal_comparison(
     return fig
 
 
+def plot_glucodensity_temporal_4model_comparison(
+    t_grid_np: np.ndarray,
+    # Training histories
+    history_basis_direct: list,
+    history_ode_direct: list,
+    history_stage1: list,
+    history_l2_basis: list,
+    history_l2_ode: list,
+    # Mixture weights pi(t)
+    pi_basis_direct_np: np.ndarray,
+    pi_ode_direct_np: np.ndarray,
+    pi_stage1_np: np.ndarray,
+    pi_basis_l2_np: np.ndarray,
+    pi_ode_l2_np: np.ndarray,
+    # Reconstructed mean curves
+    recon_basis_np: np.ndarray,
+    recon_ode_np: np.ndarray,
+    recon_stage1_np: np.ndarray,
+    # Final MMD values
+    direct_basis_mmd: float,
+    direct_ode_mmd: float,
+    stage1_mmd: float,
+    twostage_basis_mmd: float,
+    twostage_ode_mmd: float,
+    # Temporal day range
+    t_min_days: float = 0.0,
+    t_max_days: float = 1.0,
+    out_dir: str = ".",
+    show: bool = True,
+) -> "plt.Figure":
+    """
+    4-model comparison plot for glucodensity temporal mixture fitting.
+
+    Layout (4 rows x 3 columns):
+      Row 0: [Training history (MMD)]   [Training history (L2)]   [Final MMD² bar]
+      Row 1: [Direct-Basis pi(t)]       [Direct-ODE pi(t)]       [Stage1 pi(t)]
+      Row 2: [TwoStage-Basis pi(t)]     [TwoStage-ODE pi(t)]     [Mean curves]
+      Row 3: [Basis mean curves]        [ODE mean curves]         [Stage1 mean curves]
+
+    t_grid_np is already in absolute days.
+    """
+    K = pi_basis_direct_np.shape[1]
+
+    # Decide on days vs weeks for time axis
+    day_range = t_max_days - t_min_days
+    use_weeks = day_range > 30
+    if use_weeks:
+        time_axis = t_grid_np / 7.0
+        time_label = "Treatment week"
+    else:
+        time_axis = t_grid_np
+        time_label = "Treatment day"
+
+    fig, axes = plt.subplots(4, 3, figsize=(18, 20))
+
+    # --- Row 0, Col 0: MMD Training curves ---
+    axes[0, 0].plot(history_basis_direct, label="Direct-Basis", lw=1.5)
+    axes[0, 0].plot(history_ode_direct, label="Direct-ODE", lw=1.5)
+    axes[0, 0].plot(history_stage1, label="Stage1-Discrete", lw=1.5, ls="--")
+    axes[0, 0].set_title("MMD² Training History")
+    axes[0, 0].set_xlabel("Epoch")
+    axes[0, 0].set_ylabel("MMD²(avg_t)")
+    axes[0, 0].legend(fontsize=7)
+    axes[0, 0].grid(alpha=0.3)
+
+    # --- Row 0, Col 1: L² distillation history ---
+    axes[0, 1].plot(history_l2_basis, label="Basis L²", lw=1.5)
+    axes[0, 1].plot(history_l2_ode, label="ODE L²", lw=1.5)
+    axes[0, 1].set_title("Stage-2 L² Distillation")
+    axes[0, 1].set_xlabel("Epoch")
+    axes[0, 1].set_ylabel("L² loss")
+    axes[0, 1].legend(fontsize=7)
+    axes[0, 1].grid(alpha=0.3)
+
+    # --- Row 0, Col 2: Final MMD² bar chart ---
+    methods = ["Dir-Basis", "Dir-ODE", "Stage1", "2S-Basis", "2S-ODE"]
+    final_vals = [
+        direct_basis_mmd, direct_ode_mmd, stage1_mmd,
+        twostage_basis_mmd, twostage_ode_mmd,
+    ]
+    bars = axes[0, 2].bar(methods, final_vals, color=["C0", "C1", "C2", "C3", "C4"],
+                          alpha=0.85)
+    axes[0, 2].set_title("Final MMD²(avg_t)")
+    axes[0, 2].set_ylabel("MMD²")
+    axes[0, 2].tick_params(axis="x", rotation=30)
+    axes[0, 2].grid(alpha=0.3, axis="y")
+
+    # --- Row 1: pi(t) for Direct-Basis, Direct-ODE, Stage1 ---
+    for k in range(K):
+        axes[1, 0].plot(time_axis, pi_basis_direct_np[:, k], lw=1.5,
+                        label=f"$\\pi_{{{k+1}}}$")
+    axes[1, 0].set_title("Direct-Basis: $\\pi_k(t)$")
+    axes[1, 0].set_xlabel(time_label)
+    axes[1, 0].set_ylabel("Weight")
+    axes[1, 0].set_ylim(0, 1)
+    axes[1, 0].legend(fontsize=7, ncol=2)
+    axes[1, 0].grid(alpha=0.3)
+
+    for k in range(K):
+        axes[1, 1].plot(time_axis, pi_ode_direct_np[:, k], lw=1.5,
+                        label=f"$\\pi_{{{k+1}}}$")
+    axes[1, 1].set_title("Direct-ODE: $\\pi_k(t)$")
+    axes[1, 1].set_xlabel(time_label)
+    axes[1, 1].set_ylabel("Weight")
+    axes[1, 1].set_ylim(0, 1)
+    axes[1, 1].legend(fontsize=7, ncol=2)
+    axes[1, 1].grid(alpha=0.3)
+
+    for k in range(K):
+        axes[1, 2].plot(time_axis, pi_stage1_np[:, k], lw=1.5,
+                        label=f"$\\pi_{{{k+1}}}$")
+    axes[1, 2].set_title("Stage1-Discrete: $\\pi_k(t)$")
+    axes[1, 2].set_xlabel(time_label)
+    axes[1, 2].set_ylabel("Weight")
+    axes[1, 2].set_ylim(0, 1)
+    axes[1, 2].legend(fontsize=7, ncol=2)
+    axes[1, 2].grid(alpha=0.3)
+
+    # --- Row 2: TwoStage-Basis pi, TwoStage-ODE pi, overlay comparison ---
+    for k in range(K):
+        axes[2, 0].plot(time_axis, pi_basis_l2_np[:, k], lw=1.5,
+                        label=f"$\\pi_{{{k+1}}}$")
+        axes[2, 0].plot(time_axis, pi_stage1_np[:, k], lw=1.0, ls="--",
+                        color=f"C{k}", alpha=0.5)
+    axes[2, 0].set_title("TwoStage-Basis: $\\pi_k(t)$ (dashed=stage1)")
+    axes[2, 0].set_xlabel(time_label)
+    axes[2, 0].set_ylabel("Weight")
+    axes[2, 0].set_ylim(0, 1)
+    axes[2, 0].legend(fontsize=7, ncol=2)
+    axes[2, 0].grid(alpha=0.3)
+
+    for k in range(K):
+        axes[2, 1].plot(time_axis, pi_ode_l2_np[:, k], lw=1.5,
+                        label=f"$\\pi_{{{k+1}}}$")
+        axes[2, 1].plot(time_axis, pi_stage1_np[:, k], lw=1.0, ls="--",
+                        color=f"C{k}", alpha=0.5)
+    axes[2, 1].set_title("TwoStage-ODE: $\\pi_k(t)$ (dashed=stage1)")
+    axes[2, 1].set_xlabel(time_label)
+    axes[2, 1].set_ylabel("Weight")
+    axes[2, 1].set_ylim(0, 1)
+    axes[2, 1].legend(fontsize=7, ncol=2)
+    axes[2, 1].grid(alpha=0.3)
+
+    # Row 2, Col 2: all models' pi_1(t) overlaid for comparison
+    axes[2, 2].plot(time_axis, pi_basis_direct_np[:, 0], lw=1.5,
+                    label="Dir-Basis")
+    axes[2, 2].plot(time_axis, pi_ode_direct_np[:, 0], lw=1.5,
+                    label="Dir-ODE")
+    axes[2, 2].plot(time_axis, pi_stage1_np[:, 0], lw=1.5, ls="--",
+                    label="Stage1")
+    axes[2, 2].plot(time_axis, pi_basis_l2_np[:, 0], lw=1.5, ls=":",
+                    label="2S-Basis")
+    axes[2, 2].plot(time_axis, pi_ode_l2_np[:, 0], lw=1.5, ls=":",
+                    label="2S-ODE")
+    axes[2, 2].set_title("All models: $\\pi_1(t)$")
+    axes[2, 2].set_xlabel(time_label)
+    axes[2, 2].set_ylabel("Weight")
+    axes[2, 2].set_ylim(0, 1)
+    axes[2, 2].legend(fontsize=6, ncol=2)
+    axes[2, 2].grid(alpha=0.3)
+
+    # --- Row 3: Reconstructed mean intraday curves ---
+    hours = np.linspace(0, 24, recon_basis_np.shape[1])
+    for k in range(K):
+        axes[3, 0].plot(hours, recon_basis_np[k], lw=1.3, label=f"comp {k+1}")
+    axes[3, 0].set_title("Direct-Basis: Mean intraday curves")
+    axes[3, 0].set_xlabel("Hour of day")
+    axes[3, 0].set_ylabel("Glucose (mg/dL)")
+    axes[3, 0].legend(fontsize=7, ncol=2)
+    axes[3, 0].grid(alpha=0.3)
+
+    for k in range(K):
+        axes[3, 1].plot(hours, recon_ode_np[k], lw=1.3, label=f"comp {k+1}")
+    axes[3, 1].set_title("Direct-ODE: Mean intraday curves")
+    axes[3, 1].set_xlabel("Hour of day")
+    axes[3, 1].set_ylabel("Glucose (mg/dL)")
+    axes[3, 1].legend(fontsize=7, ncol=2)
+    axes[3, 1].grid(alpha=0.3)
+
+    for k in range(K):
+        axes[3, 2].plot(hours, recon_stage1_np[k], lw=1.3, label=f"comp {k+1}")
+    axes[3, 2].set_title("Stage1: Mean intraday curves")
+    axes[3, 2].set_xlabel("Hour of day")
+    axes[3, 2].set_ylabel("Glucose (mg/dL)")
+    axes[3, 2].legend(fontsize=7, ncol=2)
+    axes[3, 2].grid(alpha=0.3)
+
+    fig.suptitle("Glucodensity Temporal Mixture: 4-Model Comparison", fontsize=14,
+                 y=1.01)
+    plt.tight_layout()
+
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "glucodensity_temporal_4model_comparison.pdf")
+    fig.savefig(out_path, format="pdf", bbox_inches="tight")
+    print(f"\nSaved figure: {out_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return fig
+
+
 def plot_glucodensity_variance(
     var_basis_np: np.ndarray,
     var_ode_np: np.ndarray,
