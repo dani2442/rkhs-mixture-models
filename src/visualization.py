@@ -1,6 +1,8 @@
 """
 Visualization utilities for MMD-based Gaussian mixture fitting.
 """
+import os
+
 import torch
 import numpy as np
 from typing import Optional, List, Tuple, Union
@@ -754,5 +756,397 @@ def plot_l2_2d_samples_by_component(
 
     fig.suptitle(title, fontsize=14)
     plt.tight_layout()
+
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Glucodensity temporal mixture visualizations
+# ---------------------------------------------------------------------------
+
+
+def plot_glucodensity_temporal_comparison(
+    t_grid_np: np.ndarray,
+    history_basis: list,
+    history_ode: list,
+    pi_basis_np: np.ndarray,
+    pi_ode_np: np.ndarray,
+    recon_basis_np: np.ndarray,
+    recon_ode_np: np.ndarray,
+    median_treatment_days: float,
+    out_dir: str = ".",
+    show: bool = True,
+) -> "plt.Figure":
+    """
+    3x2 comparison plot for glucodensity temporal mixture fitting.
+
+    Layout (3 rows x 2 columns):
+      Row 0: [Training history]        [Final MMD² bar]
+      Row 1: [Basis pi(t)]             [NeuralODE pi(t)]
+      Row 2: [Basis mean curves]       [NeuralODE mean curves]
+
+    Temporal axes show approximate treatment days or weeks.
+    """
+    K = pi_basis_np.shape[1]
+
+    # Map normalized t → treatment days; switch to weeks if > 30 days
+    days = t_grid_np * median_treatment_days
+    use_weeks = median_treatment_days > 30
+    if use_weeks:
+        time_axis = days / 7.0
+        time_label = "Treatment week (approx.)"
+    else:
+        time_axis = days
+        time_label = "Treatment day (approx.)"
+
+    fig, axes = plt.subplots(3, 2, figsize=(14, 15))
+
+    # --- Row 0, Col 0: Training curves ---
+    axes[0, 0].plot(history_basis, label="Basis", lw=2.0)
+    axes[0, 0].plot(history_ode, label="NeuralODE", lw=2.0)
+    axes[0, 0].set_title("MMD² Training History")
+    axes[0, 0].set_xlabel("Epoch")
+    axes[0, 0].set_ylabel("MMD²(avg_t)")
+    axes[0, 0].legend(fontsize=9)
+    axes[0, 0].grid(alpha=0.3)
+
+    # --- Row 0, Col 1: Final MMD² bar chart ---
+    methods = ["Basis", "NeuralODE"]
+    final_vals = [history_basis[-1], history_ode[-1]]
+    axes[0, 1].bar(methods, final_vals, color=["C0", "C1"], alpha=0.85)
+    axes[0, 1].set_title("Final MMD²(avg_t)")
+    axes[0, 1].set_ylabel("MMD²")
+    axes[0, 1].grid(alpha=0.3, axis="y")
+
+    # --- Row 1, Col 0: pi(t) for Basis ---
+    for k in range(K):
+        axes[1, 0].plot(time_axis, pi_basis_np[:, k], lw=1.5,
+                        label=f"$\\pi_{{{k+1}}}$")
+    axes[1, 0].set_title("Basis: $\\pi_k(t)$")
+    axes[1, 0].set_xlabel(time_label)
+    axes[1, 0].set_ylabel("Weight")
+    axes[1, 0].set_ylim(0, 1)
+    axes[1, 0].legend(fontsize=7, ncol=2)
+    axes[1, 0].grid(alpha=0.3)
+
+    # --- Row 1, Col 1: pi(t) for NeuralODE ---
+    for k in range(K):
+        axes[1, 1].plot(time_axis, pi_ode_np[:, k], lw=1.5,
+                        label=f"$\\pi_{{{k+1}}}$")
+    axes[1, 1].set_title("NeuralODE: $\\pi_k(t)$")
+    axes[1, 1].set_xlabel(time_label)
+    axes[1, 1].set_ylabel("Weight")
+    axes[1, 1].set_ylim(0, 1)
+    axes[1, 1].legend(fontsize=7, ncol=2)
+    axes[1, 1].grid(alpha=0.3)
+
+    # --- Row 2, Col 0: Basis reconstructed mean intraday curves ---
+    hours = np.linspace(0, 24, recon_basis_np.shape[1])
+    for k in range(K):
+        axes[2, 0].plot(hours, recon_basis_np[k], lw=1.3, label=f"comp {k+1}")
+    axes[2, 0].set_title("Basis: Reconstructed mean curves")
+    axes[2, 0].set_xlabel("Hour of day")
+    axes[2, 0].set_ylabel("Glucose (mg/dL)")
+    axes[2, 0].legend(fontsize=7, ncol=2)
+    axes[2, 0].grid(alpha=0.3)
+
+    # --- Row 2, Col 1: NeuralODE reconstructed mean intraday curves ---
+    for k in range(K):
+        axes[2, 1].plot(hours, recon_ode_np[k], lw=1.3, label=f"comp {k+1}")
+    axes[2, 1].set_title("NeuralODE: Reconstructed mean curves")
+    axes[2, 1].set_xlabel("Hour of day")
+    axes[2, 1].set_ylabel("Glucose (mg/dL)")
+    axes[2, 1].legend(fontsize=7, ncol=2)
+    axes[2, 1].grid(alpha=0.3)
+
+    plt.tight_layout()
+
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "glucodensity_temporal_comparison.pdf")
+    fig.savefig(out_path, format="pdf", bbox_inches="tight")
+    print(f"\nSaved figure: {out_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return fig
+
+
+def plot_glucodensity_variance(
+    var_basis_np: np.ndarray,
+    var_ode_np: np.ndarray,
+    out_dir: str = ".",
+    show: bool = True,
+) -> "plt.Figure":
+    """Variance per coefficient for both models (1x2 subplots)."""
+    K = var_basis_np.shape[0]
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    for k in range(K):
+        axes[0].plot(var_basis_np[k], lw=1.2, label=f"comp {k+1}")
+    axes[0].set_title("Basis: Variance per coefficient")
+    axes[0].set_xlabel("Coefficient index")
+    axes[0].set_ylabel("Variance")
+    axes[0].legend(fontsize=7, ncol=2)
+    axes[0].grid(alpha=0.3)
+
+    for k in range(K):
+        axes[1].plot(var_ode_np[k], lw=1.2, label=f"comp {k+1}")
+    axes[1].set_title("NeuralODE: Variance per coefficient")
+    axes[1].set_xlabel("Coefficient index")
+    axes[1].set_ylabel("Variance")
+    axes[1].legend(fontsize=7, ncol=2)
+    axes[1].grid(alpha=0.3)
+
+    plt.tight_layout()
+
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "glucodensity_temporal_variance.pdf")
+    fig.savefig(out_path, format="pdf", bbox_inches="tight")
+    print(f"Saved figure: {out_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return fig
+
+
+def plot_cluster_probabilities_by_group(
+    patient_posteriors: dict,
+    patient_time_days: dict,
+    control_ids: list,
+    treatment_ids: list,
+    n_time_bins: int = 10,
+    out_dir: str = ".",
+    show: bool = True,
+) -> "plt.Figure":
+    """
+    Average cluster probability over time for control vs treatment groups.
+
+    Each group gets a subplot showing how cluster membership evolves.
+    """
+    control_ids_set = set(control_ids)
+    treatment_ids_set = set(treatment_ids)
+
+    K = next(iter(patient_posteriors.values())).shape[1]
+
+    # Collect (day, posterior_vector) for each group
+    control_data = []
+    treatment_data = []
+    for pid, posteriors in patient_posteriors.items():
+        days = patient_time_days[pid]
+        for i in range(len(days)):
+            entry = (days[i], posteriors[i])
+            if pid in control_ids_set:
+                control_data.append(entry)
+            elif pid in treatment_ids_set:
+                treatment_data.append(entry)
+
+    if not (control_data or treatment_data):
+        print("Warning: no data for cluster probability plot.")
+        return None
+
+    # Common time range for binning
+    all_days_list = [d for d, _ in control_data + treatment_data]
+    max_day = max(all_days_list)
+    bin_edges = np.linspace(0, max_day + 1e-9, n_time_bins + 1)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2.0
+
+    def _bin_and_average(data):
+        binned = [[] for _ in range(n_time_bins)]
+        for day, post in data:
+            b = min(
+                int(np.searchsorted(bin_edges, day, side="right")) - 1,
+                n_time_bins - 1,
+            )
+            b = max(0, b)
+            binned[b].append(post)
+        means = np.full((n_time_bins, K), np.nan)
+        stds = np.full((n_time_bins, K), np.nan)
+        counts = np.zeros(n_time_bins)
+        for b in range(n_time_bins):
+            if binned[b]:
+                arr = np.array(binned[b])
+                means[b] = arr.mean(axis=0)
+                stds[b] = arr.std(axis=0)
+                counts[b] = len(binned[b])
+        return means, stds, counts
+
+    ctrl_means, ctrl_stds, ctrl_counts = _bin_and_average(control_data)
+    treat_means, treat_stds, treat_counts = _bin_and_average(treatment_data)
+
+    # Decide axis label (weeks vs days)
+    use_weeks = max_day > 30
+    if use_weeks:
+        time_axis = bin_centers / 7.0
+        time_label = "Treatment week"
+    else:
+        time_axis = bin_centers
+        time_label = "Treatment day"
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+    colors = [plt.cm.tab10(k) for k in range(K)]
+
+    for k in range(K):
+        valid_c = ctrl_counts > 0
+        if valid_c.any():
+            axes[0].plot(
+                time_axis[valid_c], ctrl_means[valid_c, k],
+                lw=2, color=colors[k], label=f"Cluster {k+1}",
+            )
+            axes[0].fill_between(
+                time_axis[valid_c],
+                (ctrl_means[valid_c, k] - ctrl_stds[valid_c, k]).clip(0, 1),
+                (ctrl_means[valid_c, k] + ctrl_stds[valid_c, k]).clip(0, 1),
+                alpha=0.15, color=colors[k],
+            )
+        valid_t = treat_counts > 0
+        if valid_t.any():
+            axes[1].plot(
+                time_axis[valid_t], treat_means[valid_t, k],
+                lw=2, color=colors[k], label=f"Cluster {k+1}",
+            )
+            axes[1].fill_between(
+                time_axis[valid_t],
+                (treat_means[valid_t, k] - treat_stds[valid_t, k]).clip(0, 1),
+                (treat_means[valid_t, k] + treat_stds[valid_t, k]).clip(0, 1),
+                alpha=0.15, color=colors[k],
+            )
+
+    axes[0].set_title("Control group")
+    axes[0].set_xlabel(time_label)
+    axes[0].set_ylabel("Cluster probability")
+    axes[0].set_ylim(0, 1)
+    axes[0].legend(fontsize=8)
+    axes[0].grid(alpha=0.3)
+
+    axes[1].set_title("Treatment group")
+    axes[1].set_xlabel(time_label)
+    axes[1].set_ylim(0, 1)
+    axes[1].legend(fontsize=8)
+    axes[1].grid(alpha=0.3)
+
+    fig.suptitle("Cluster membership probability over time", fontsize=13)
+    plt.tight_layout()
+
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "glucodensity_cluster_probs_by_group.pdf")
+    fig.savefig(out_path, format="pdf", bbox_inches="tight")
+    print(f"Saved figure: {out_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return fig
+
+
+def plot_ternary_simplex_evolution(
+    patient_posteriors: dict,
+    patient_time_norm: dict,
+    control_ids: list,
+    treatment_ids: list,
+    out_dir: str = ".",
+    show: bool = True,
+) -> "plt.Figure":
+    """
+    Ternary simplex plot showing each patient's cluster trajectory.
+
+    Requires exactly K=3 clusters.  Each patient traces a path on the
+    2-simplex (equilateral triangle).  Control patients are blue,
+    treatment patients are red.  Line intensity fades from light (t=0)
+    to strong (t=1).
+    """
+    from matplotlib.lines import Line2D
+
+    control_ids_set = set(control_ids)
+    treatment_ids_set = set(treatment_ids)
+
+    K = next(iter(patient_posteriors.values())).shape[1]
+    if K != 3:
+        raise ValueError(f"Ternary plot requires K=3, got K={K}")
+
+    # Equilateral triangle vertices
+    v1 = np.array([0.0, 0.0])
+    v2 = np.array([1.0, 0.0])
+    v3 = np.array([0.5, np.sqrt(3) / 2.0])
+    vertices = np.array([v1, v2, v3])
+
+    fig, ax = plt.subplots(figsize=(10, 9))
+
+    # Draw triangle border
+    triangle = plt.Polygon(
+        [v1, v2, v3], fill=False, edgecolor="black", linewidth=2,
+    )
+    ax.add_patch(triangle)
+
+    # Label vertices
+    offset = 0.06
+    ax.text(v1[0], v1[1] - offset, "Cluster 1", ha="center", fontsize=11,
+            fontweight="bold")
+    ax.text(v2[0], v2[1] - offset, "Cluster 2", ha="center", fontsize=11,
+            fontweight="bold")
+    ax.text(v3[0], v3[1] + offset, "Cluster 3", ha="center", fontsize=11,
+            fontweight="bold")
+
+    def _plot_trajectory(ax, posteriors, t_norm, base_color, lw=0.5):
+        """Plot a single patient's trajectory on the simplex."""
+        pts = posteriors @ vertices  # barycentric → 2D, shape (n_w, 2)
+        n = len(pts)
+        for i in range(n - 1):
+            # Alpha increases with time: lighter at t=0, stronger at t=1
+            alpha = 0.08 + 0.72 * t_norm[min(i + 1, n - 1)]
+            ax.plot(
+                pts[i:i + 2, 0], pts[i:i + 2, 1],
+                color=base_color, alpha=alpha, linewidth=lw,
+            )
+        # Start / end markers
+        if n > 0:
+            ax.plot(pts[0, 0], pts[0, 1], "o", color=base_color,
+                    markersize=2, alpha=0.25)
+            ax.plot(pts[-1, 0], pts[-1, 1], "s", color=base_color,
+                    markersize=3, alpha=0.85)
+
+    for pid, posteriors in patient_posteriors.items():
+        t_norm = patient_time_norm[pid]
+        if pid in control_ids_set:
+            _plot_trajectory(ax, posteriors, t_norm, "tab:blue")
+        elif pid in treatment_ids_set:
+            _plot_trajectory(ax, posteriors, t_norm, "tab:red")
+
+    # Legend
+    legend_elements = [
+        Line2D([0], [0], color="tab:blue", lw=2, label="Control"),
+        Line2D([0], [0], color="tab:red", lw=2, label="Treatment"),
+        Line2D([0], [0], marker="o", color="gray", markerfacecolor="gray",
+               markersize=6, lw=0, label="Start ($t=0$)"),
+        Line2D([0], [0], marker="s", color="gray", markerfacecolor="gray",
+               markersize=6, lw=0, label="End ($t=1$)"),
+    ]
+    ax.legend(handles=legend_elements, loc="upper right", fontsize=10)
+
+    ax.set_xlim(-0.12, 1.12)
+    ax.set_ylim(-0.15, v3[1] + 0.12)
+    ax.set_aspect("equal")
+    ax.set_title("Patient evolution in cluster probability simplex",
+                 fontsize=13)
+    ax.axis("off")
+
+    plt.tight_layout()
+
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "glucodensity_ternary_evolution.pdf")
+    fig.savefig(out_path, format="pdf", bbox_inches="tight")
+    print(f"Saved figure: {out_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
 
     return fig

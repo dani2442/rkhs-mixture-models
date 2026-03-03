@@ -137,10 +137,12 @@ def run_mmd_clustering(
     kernel_name: str,
     kernel_c: float,
     gaussian_sigma: float,
+    gaussian_sigma_scale: float,
     mmd_epochs: int,
     mmd_lr: float,
     mmd_seed: int,
     covariance_type: str,
+    assignment_mode: str,
 ) -> np.ndarray:
     torch.manual_seed(mmd_seed)
     X_torch = torch.as_tensor(X, dtype=torch.float64)
@@ -154,7 +156,8 @@ def run_mmd_clustering(
             iu = torch.triu_indices(pairwise_dist.shape[0], pairwise_dist.shape[1], offset=1)
             upper = pairwise_dist[iu[0], iu[1]]
             positive = upper[upper > 0]
-            sigma = torch.median(positive).item() if positive.numel() > 0 else 1.0
+            median_sigma = torch.median(positive).item() if positive.numel() > 0 else 1.0
+            sigma = gaussian_sigma_scale * median_sigma
         kernel = GaussianKernel(sigma=max(float(sigma), 1e-6))
     else:
         raise ValueError(f"Unknown kernel_name: {kernel_name}")
@@ -171,7 +174,23 @@ def run_mmd_clustering(
     )
 
     with torch.no_grad():
-        y_pred = model.responsibilities(X_torch).argmax(dim=1)
+        if assignment_mode == "auto":
+            resolved_assignment = (
+                "responsibility" if kernel_name == "gaussian" else "nearest_mean"
+            )
+        else:
+            resolved_assignment = assignment_mode
+
+        if resolved_assignment == "responsibility":
+            # Likelihood-based assignment from the fitted Gaussian mixture.
+            y_pred = model.responsibilities(X_torch).argmax(dim=1)
+        elif resolved_assignment == "nearest_mean":
+            # MMD fitting primarily aligns kernel mean embeddings, so nearest-center
+            # assignments are often more stable than likelihood posteriors.
+            distances = torch.cdist(X_torch, model.mean.detach())
+            y_pred = distances.argmin(dim=1)
+        else:
+            raise ValueError(f"Unknown assignment_mode: {assignment_mode}")
 
     return y_pred.cpu().numpy().astype(int)
 
@@ -214,8 +233,15 @@ def benchmark(args: argparse.Namespace):
     print("Scikit-learn toy clustering benchmark + MMD")
     print("=" * 80)
     print(f"n_samples={args.n_samples}, mmd_epochs={args.mmd_epochs}, mmd_lr={args.mmd_lr}")
-    print(f"MMD kernels: Quadratic(c={args.kernel_c}) and Gaussian(sigma={args.gaussian_sigma})")
-    print(f"MMD covariance_type={args.mmd_covariance_type}")
+    print(
+        "MMD kernels: "
+        f"Quadratic(c={args.kernel_c}) and "
+        f"Gaussian(sigma={args.gaussian_sigma}, sigma_scale={args.gaussian_sigma_scale})"
+    )
+    print(
+        f"MMD covariance_type={args.mmd_covariance_type}, "
+        f"assignment={args.mmd_assignment}"
+    )
     if not has_hdbscan:
         print("HDBSCAN is unavailable in this scikit-learn version; skipping that column.")
 
@@ -309,10 +335,12 @@ def benchmark(args: argparse.Namespace):
                     kernel_name="quadratic" if name == "MMD\nQuadratic" else "gaussian",
                     kernel_c=args.kernel_c,
                     gaussian_sigma=args.gaussian_sigma,
+                    gaussian_sigma_scale=args.gaussian_sigma_scale,
                     mmd_epochs=args.mmd_epochs,
                     mmd_lr=args.mmd_lr,
                     mmd_seed=args.mmd_seed,
                     covariance_type=args.mmd_covariance_type,
+                    assignment_mode=args.mmd_assignment,
                 )
             else:
                 with warnings.catch_warnings():
@@ -421,8 +449,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n-samples", type=int, default=500)
     parser.add_argument("--seed", type=int, default=30)
     parser.add_argument("--mmd-seed", type=int, default=42)
-    parser.add_argument("--mmd-epochs", type=int, default=200)
-    parser.add_argument("--mmd-lr", type=float, default=0.1)
+    parser.add_argument("--mmd-epochs", type=int, default=300)
+    parser.add_argument("--mmd-lr", type=float, default=0.05)
     parser.add_argument("--kernel-c", type=float, default=1.0)
     parser.add_argument(
         "--gaussian-sigma",
@@ -431,10 +459,29 @@ def parse_args() -> argparse.Namespace:
         help="Gaussian kernel bandwidth for MMD Gaussian. If <= 0, use median heuristic per dataset.",
     )
     parser.add_argument(
+        "--gaussian-sigma-scale",
+        type=float,
+        default=0.5,
+        help=(
+            "Scale factor for median-heuristic sigma when --gaussian-sigma <= 0. "
+            "Lower values make the Gaussian kernel more local."
+        ),
+    )
+    parser.add_argument(
         "--mmd-covariance-type",
         type=str,
         default="full",
         choices=["diagonal", "spherical", "full"],
+    )
+    parser.add_argument(
+        "--mmd-assignment",
+        type=str,
+        default="auto",
+        choices=["auto", "nearest_mean", "responsibility"],
+        help=(
+            "How to convert fitted MMD mixture to hard labels. "
+            "'auto' uses nearest_mean for quadratic kernel and responsibility for Gaussian."
+        ),
     )
     parser.add_argument(
         "--save-path",

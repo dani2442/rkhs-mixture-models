@@ -257,6 +257,35 @@ class TemporalGaussianMixtureModel(nn.Module):
         }
         return mmd2, stats
 
+    def responsibilities(self, X: torch.Tensor, pi: torch.Tensor) -> torch.Tensor:
+        """
+        Compute responsibilities γ_k(x, t) = P(Z=k | X=x, T=t).
+
+        Uses the shared Gaussian component densities p_k(x) and the
+        time-varying mixture weights π_k(t) supplied for each sample:
+            γ_k(x, t) = π_k(t) p_k(x) / Σ_s π_s(t) p_s(x)
+
+        Uses log-sum-exp for numerical stability.
+
+        Args:
+            X: Data coefficients, shape (n, M)
+            pi: Mixture weights for each sample, shape (n, K).
+                Typically obtained by interpolating the learned π(t)
+                at each sample's temporal position.
+
+        Returns:
+            gamma: Responsibilities, shape (n, K), where
+                   γ[i,k] = P(Z=k | X=X_i, T=t_i).  Each row sums to 1.
+        """
+        log_pi = torch.log(pi + 1e-10)  # (n, K)
+        log_densities = self.components.log_component_densities(X)  # (n, K)
+
+        log_weighted = log_pi + log_densities  # (n, K)
+        log_sum = torch.logsumexp(log_weighted, dim=1, keepdim=True)  # (n, 1)
+        log_gamma = log_weighted - log_sum  # (n, K)
+
+        return torch.exp(log_gamma)
+
 
 def project_l2_2d_to_space_slices(X: torch.Tensor, space_basis: L2Basis) -> torch.Tensor:
     """
