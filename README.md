@@ -141,6 +141,7 @@ The `examples/` directory contains complete, self-contained scripts for each sup
 | [`train_molecules.py`](examples/train_molecules.py) | Molecular graphs | ESOL molecules via WL hash → DCT basis |
 | [`train_ntu_skeleton.py`](examples/train_ntu_skeleton.py) | $L^2([0,1]; \mathbb{R}^{75})$ | Human action skeleton sequences (NTU RGB+D) |
 | [`train_atomic.py`](examples/train_atomic.py) | Molecular data | QM9/TMQM atomic datasets |
+| [`compare_sklearn_clustering_mmd.py`](examples/compare_sklearn_clustering_mmd.py) | $\mathbb{R}^2$ toy datasets | scikit-learn clustering benchmark + MMD with finite-dimensional quadratic kernel |
 
 Run any example from the repository root:
 
@@ -148,6 +149,7 @@ Run any example from the repository root:
 python examples/train_l2.py
 python examples/train_so3.py
 python examples/train_graph.py
+python examples/compare_sklearn_clustering_mmd.py
 ```
 
 

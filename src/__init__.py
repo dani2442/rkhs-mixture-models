@@ -39,6 +39,12 @@ from src.visualization import (
     plot_l2_2d_surfaces_grid,
     plot_l2_2d_means_comparison,
     plot_l2_2d_samples_by_component,
+    plot_glucodensity_temporal_comparison,
+    plot_glucodensity_variance,
+    plot_cluster_probabilities_by_group,
+    plot_ternary_simplex_evolution,
+    plot_ternary_simplex_grid,
+    plot_ternary_simplex_interactive,
 )
 
 

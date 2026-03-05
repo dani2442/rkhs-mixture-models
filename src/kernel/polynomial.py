@@ -200,46 +200,41 @@ class PolynomialKernel(Kernel):
         dtype = m1.dtype
 
         moments = torch.zeros(max_order + 1, device=device, dtype=dtype)
-
-        # E[Z^0] = 1
         moments[0] = 1.0
 
         if max_order >= 1:
-            # E[Z] = m1^T m2
-            moments[1] = m1 @ m2
+            m1m2 = m1 @ m2
+            moments[1] = m1m2
+        else:
+            m1m2 = None
 
         if max_order >= 2:
-            # E[Z^2] = (m1^T m2)^2 + m1^T K2 m1 + m2^T K1 m2 + tr(K1 K2)
-            m1m2 = moments[1]
             m1K2m1 = m1 @ K2 @ m1
             m2K1m2 = m2 @ K1 @ m2
-            trK1K2 = (K1 * K2).sum()  # tr(K1 K2) = Frobenius inner product
-            moments[2] = m1m2**2 + m1K2m1 + m2K1m2 + trK1K2
+            trK1K2 = (K1 * K2).sum()
+            second_term = m1K2m1 + m2K1m2 + trK1K2
+            moments[2] = m1m2**2 + second_term
+        else:
+            m1K2m1 = None
+            m2K1m2 = None
+            trK1K2 = None
+            second_term = None
 
         if max_order >= 3:
-            # E[Z^3] = (m1^T m2)^3 + 3(m1^T m2)(m1^T K2 m1 + m2^T K1 m2 + tr(K1 K2))
-            #        + 6 m1^T K2 K1 m2
             m1K2K1m2 = m1 @ K2 @ K1 @ m2
-            moments[3] = (
-                m1m2**3
-                + 3 * m1m2 * (m1K2m1 + m2K1m2 + trK1K2)
-                + 6 * m1K2K1m2
-            )
+            moments[3] = m1m2**3 + 3 * m1m2 * second_term + 6 * m1K2K1m2
+        else:
+            m1K2K1m2 = None
 
         if max_order >= 4:
-            # For higher orders, use recursive formulas or explicit Isserlis
-            # This is a simplified implementation for common cases
-            # E[Z^4] requires more terms from Isserlis theorem
             K1K2 = K1 @ K2
-            trK1K2_sq = (K1K2 * K1K2.T).sum()  # tr((K1 K2)^2)
+            trK1K2_sq = (K1K2 * K1K2.T).sum()
             m1K2K1K2m1 = m1 @ K2 @ K1 @ K2 @ m1
             m2K1K2K1m2 = m2 @ K1 @ K2 @ K1 @ m2
-
-            # Fourth moment (simplified, assuming zero means for cross-terms)
             moments[4] = (
                 m1m2**4
-                + 6 * m1m2**2 * (m1K2m1 + m2K1m2 + trK1K2)
-                + 3 * (m1K2m1 + m2K1m2 + trK1K2) ** 2
+                + 6 * m1m2**2 * second_term
+                + 3 * second_term**2
                 + 24 * m1m2 * m1K2K1m2
                 + 12 * (m1K2K1K2m1 + m2K1K2K1m2)
                 + 12 * trK1K2_sq

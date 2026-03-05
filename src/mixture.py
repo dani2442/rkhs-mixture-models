@@ -20,7 +20,7 @@ class GaussianMixtureModel(nn.Module):
     The mixture Q = Σ_k π_k N(m_k, K_k) is parameterized by:
       - π: Mixture weights (via softmax of unconstrained logits)
       - m: Component means (coefficients in the basis)
-      - K: Component covariances (diagonal, parameterized by log-variances)
+      - K: Component covariances (diagonal, spherical, or full)
 
     The model can be trained by minimizing MMD²(P, Q) where P is an
     empirical distribution of observed data.
@@ -43,7 +43,7 @@ class GaussianMixtureModel(nn.Module):
             covariance_type: Type of covariance parameterization:
                 - "diagonal": Per-component, per-dimension variances (K × M params)
                 - "spherical": Per-component scalar variance (K params)
-                - "full": Full covariance matrices (K × M × M params) [not implemented]
+                - "full": Full covariance matrices via Cholesky factors (K × M × M params)
             device: Torch device.
             dtype: Torch dtype.
         """
@@ -150,6 +150,7 @@ class GaussianMixtureModel(nn.Module):
                 - "kmeans++": K-means++ initialization
         """
         n = X.shape[0]
+        M = X.shape[1]
 
         if method == "random":
             # Randomly select K data points as initial means
@@ -180,15 +181,42 @@ class GaussianMixtureModel(nn.Module):
 
         # Initialize variance from data variance
         data_var = X.var(dim=0)  # (M,)
+        eps = 1e-6
         with torch.no_grad():
             if self.covariance_type == "diagonal":
                 self._log_var.copy_(
-                    torch.log(data_var + 1e-6).unsqueeze(0).expand(self.num_components, -1)
+                    torch.log(data_var + eps).unsqueeze(0).expand(self.num_components, -1)
                 )
             elif self.covariance_type == "spherical":
                 self._log_var.copy_(
-                    torch.log(data_var.mean() + 1e-6).expand(self.num_components)
+                    torch.log(data_var.mean() + eps).expand(self.num_components)
                 )
+            elif self.covariance_type == "full":
+                eye = torch.eye(M, device=self.device, dtype=self.dtype)
+                centered_global = X - X.mean(dim=0, keepdim=True)
+                if n > 1:
+                    global_cov = centered_global.T @ centered_global / (n - 1)
+                else:
+                    global_cov = eye.clone()
+                global_cov = global_cov + eps * eye
+
+                centers = self._mean_coeffs.detach()
+                labels = torch.cdist(X, centers).argmin(dim=1)
+                chol_factors = []
+
+                for k in range(self.num_components):
+                    Xk = X[labels == k]
+                    if Xk.shape[0] > 1:
+                        centered_k = Xk - Xk.mean(dim=0, keepdim=True)
+                        cov_k = centered_k.T @ centered_k / (Xk.shape[0] - 1)
+                        cov_k = cov_k + eps * eye
+                    else:
+                        cov_k = global_cov
+
+                    chol_k = torch.linalg.cholesky(cov_k)
+                    chol_factors.append(chol_k)
+
+                self._chol_factor.copy_(torch.stack(chol_factors, dim=0))
 
     def compute_mmd2(
         self,
@@ -478,7 +506,7 @@ def fit_gaussian_mixture_mmd(
     kernel: Kernel,
     num_epochs: int = 100,
     lr: float = 0.01,
-    covariance_type: Literal["diagonal", "spherical"] = "diagonal",
+    covariance_type: Literal["diagonal", "spherical", "full"] = "diagonal",
     init_method: Literal["random", "kmeans++"] = "kmeans++",
     basis: Optional[HilbertBasis] = None,
     verbose: bool = True,

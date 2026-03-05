@@ -144,7 +144,7 @@ class TemporalGaussianMixtureModel(nn.Module):
         num_components: int,
         coeff_dim: int,
         time_weight_model: nn.Module,
-        covariance_type: Literal["diagonal", "spherical"] = "diagonal",
+        covariance_type: Literal["diagonal", "spherical", "full"] = "diagonal",
         device: torch.device = torch.device("cpu"),
         dtype: torch.dtype = torch.float64,
     ):
@@ -180,15 +180,28 @@ class TemporalGaussianMixtureModel(nn.Module):
         self,
         X_time: torch.Tensor,
         method: Literal["random", "kmeans", "kmeans++"] = "kmeans++",
+        mask: torch.Tensor | None = None,
     ) -> None:
-        """Initialize shared Gaussian components using all time slices."""
+        """Initialize shared Gaussian components using all time slices.
+
+        Args:
+            X_time: (L_t, n, M) data tensor (may contain padding).
+            method: Initialization method for k-means.
+            mask: Optional boolean tensor (L_t, n). True = valid sample,
+                  False = padding to ignore.
+        """
         if X_time.ndim != 3:
             raise ValueError("X_time must have shape (L_t, n, M)")
         L_t, n, M = X_time.shape
         if M != self.coeff_dim:
             raise ValueError(f"X_time coeff dim {M} != model coeff dim {self.coeff_dim}")
 
-        stacked = X_time.permute(1, 0, 2).reshape(n * L_t, M)
+        if mask is not None:
+            # Stack only valid (non-padding) samples
+            valid_samples = [X_time[l][mask[l]] for l in range(L_t)]
+            stacked = torch.cat(valid_samples, dim=0)  # (N_valid, M)
+        else:
+            stacked = X_time.permute(1, 0, 2).reshape(n * L_t, M)
         self.components.initialize_from_data(stacked, method=method)
 
     def compute_mmd2(
@@ -197,9 +210,20 @@ class TemporalGaussianMixtureModel(nn.Module):
         kernel: Kernel,
         compute_const_term: bool = True,
         const_terms: torch.Tensor | None = None,
+        mask: torch.Tensor | None = None,
     ) -> Tuple[torch.Tensor, dict]:
         """
         Compute mean_t MMD²(P_t, Q_t), with Q_t using time-varying pi(t).
+
+        Args:
+            X_time: (L_t, n, M) data tensor (may contain padding).
+            kernel: Kernel function.
+            compute_const_term: Whether to compute the data-data term.
+            const_terms: Precomputed constant terms (L_t,).
+            mask: Optional boolean tensor (L_t, n). True = valid sample,
+                  False = padding to ignore. When provided, only valid
+                  samples in each time bin are used for Jbar and the
+                  constant gram term.
         """
         if X_time.ndim != 3:
             raise ValueError("X_time must have shape (L_t, n, M)")
@@ -220,10 +244,11 @@ class TemporalGaussianMixtureModel(nn.Module):
 
         if compute_const_term:
             if const_terms is None:
-                const_terms = torch.stack(
-                    [kernel.compute_gram_matrix(X_time[l]).mean() for l in range(L_t)],
-                    dim=0,
-                )
+                const_terms_list = []
+                for l in range(L_t):
+                    X_l = X_time[l][mask[l]] if mask is not None else X_time[l]
+                    const_terms_list.append(kernel.compute_gram_matrix(X_l).mean())
+                const_terms = torch.stack(const_terms_list, dim=0)
             else:
                 const_terms = const_terms.to(device=self.device, dtype=self.dtype)
         else:
@@ -236,7 +261,8 @@ class TemporalGaussianMixtureModel(nn.Module):
         )
 
         for l in range(L_t):
-            Jbar_l = kernel.compute_Jbar(X_time[l], m, Kcov)
+            X_l = X_time[l][mask[l]] if mask is not None else X_time[l]
+            Jbar_l = kernel.compute_Jbar(X_l, m, Kcov)
             Jbar_time[l] = Jbar_l
             cross_terms[l] = (pi_t[l] * Jbar_l).sum()
             mixmix_terms[l] = pi_t[l] @ I @ pi_t[l]
@@ -256,6 +282,35 @@ class TemporalGaussianMixtureModel(nn.Module):
             "variance": self.variance.detach(),
         }
         return mmd2, stats
+
+    def responsibilities(self, X: torch.Tensor, pi: torch.Tensor) -> torch.Tensor:
+        """
+        Compute responsibilities γ_k(x, t) = P(Z=k | X=x, T=t).
+
+        Uses the shared Gaussian component densities p_k(x) and the
+        time-varying mixture weights π_k(t) supplied for each sample:
+            γ_k(x, t) = π_k(t) p_k(x) / Σ_s π_s(t) p_s(x)
+
+        Uses log-sum-exp for numerical stability.
+
+        Args:
+            X: Data coefficients, shape (n, M)
+            pi: Mixture weights for each sample, shape (n, K).
+                Typically obtained by interpolating the learned π(t)
+                at each sample's temporal position.
+
+        Returns:
+            gamma: Responsibilities, shape (n, K), where
+                   γ[i,k] = P(Z=k | X=X_i, T=t_i).  Each row sums to 1.
+        """
+        log_pi = torch.log(pi + 1e-10)  # (n, K)
+        log_densities = self.components.log_component_densities(X)  # (n, K)
+
+        log_weighted = log_pi + log_densities  # (n, K)
+        log_sum = torch.logsumexp(log_weighted, dim=1, keepdim=True)  # (n, 1)
+        log_gamma = log_weighted - log_sum  # (n, K)
+
+        return torch.exp(log_gamma)
 
 
 def project_l2_2d_to_space_slices(X: torch.Tensor, space_basis: L2Basis) -> torch.Tensor:
@@ -284,15 +339,28 @@ def project_l2_2d_to_space_slices(X: torch.Tensor, space_basis: L2Basis) -> torc
     return coeffs.permute(1, 0, 2).contiguous()
 
 
-def precompute_temporal_const_terms(X_time: torch.Tensor, kernel: Kernel) -> torch.Tensor:
-    """Precompute const_l = E_{x,x'~P_l}[k(x,x')] for each time slice l."""
+def precompute_temporal_const_terms(
+    X_time: torch.Tensor,
+    kernel: Kernel,
+    mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Precompute const_l = E_{x,x'~P_l}[k(x,x')] for each time slice l.
+
+    Args:
+        X_time: (L_t, n, M) data tensor.
+        kernel: Kernel function.
+        mask: Optional boolean tensor (L_t, n). When provided, only valid
+              samples in each bin are used.
+    """
     if X_time.ndim != 3:
         raise ValueError("X_time must have shape (L_t, n, M)")
 
     L_t = X_time.shape[0]
-    return torch.stack(
-        [kernel.compute_gram_matrix(X_time[l]).mean() for l in range(L_t)], dim=0
-    )
+    terms = []
+    for l in range(L_t):
+        X_l = X_time[l][mask[l]] if mask is not None else X_time[l]
+        terms.append(kernel.compute_gram_matrix(X_l).mean())
+    return torch.stack(terms, dim=0)
 
 
 def fit_temporal_gaussian_mixture_mmd(
@@ -304,14 +372,19 @@ def fit_temporal_gaussian_mixture_mmd(
     init_method: Literal["random", "kmeans", "kmeans++"] = "kmeans++",
     verbose: bool = True,
     log_interval: int = 20,
+    mask: torch.Tensor | None = None,
 ) -> list[float]:
     """
     Fit temporal mixture by minimizing average_t MMD²(P_t, Q_t).
 
     The constant data-data term is precomputed and excluded from gradients.
+
+    Args:
+        mask: Optional boolean tensor (L_t, n). True = valid sample,
+              False = padding to ignore during MMD computation.
     """
-    model.initialize_from_data(X_time, method=init_method)
-    const_terms = precompute_temporal_const_terms(X_time, kernel)
+    model.initialize_from_data(X_time, method=init_method, mask=mask)
+    const_terms = precompute_temporal_const_terms(X_time, kernel, mask=mask)
     const_mean = const_terms.mean()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -320,7 +393,8 @@ def fit_temporal_gaussian_mixture_mmd(
     for epoch in range(num_epochs):
         optimizer.zero_grad()
         mmd2_no_const, _ = model.compute_mmd2(
-            X_time, kernel, compute_const_term=False, const_terms=None
+            X_time, kernel, compute_const_term=False, const_terms=None,
+            mask=mask,
         )
         mmd2_no_const.backward()
         optimizer.step()

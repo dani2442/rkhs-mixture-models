@@ -1,6 +1,8 @@
 """
 Visualization utilities for MMD-based Gaussian mixture fitting.
 """
+import os
+
 import torch
 import numpy as np
 from typing import Optional, List, Tuple, Union
@@ -756,3 +758,1116 @@ def plot_l2_2d_samples_by_component(
     plt.tight_layout()
 
     return fig
+
+
+# ---------------------------------------------------------------------------
+# Glucodensity temporal mixture visualizations
+# ---------------------------------------------------------------------------
+
+
+def plot_glucodensity_temporal_comparison(
+    t_grid_np: np.ndarray,
+    history_basis: list,
+    history_ode: list,
+    pi_basis_np: np.ndarray,
+    pi_ode_np: np.ndarray,
+    recon_basis_np: np.ndarray,
+    recon_ode_np: np.ndarray,
+    out_dir: str = ".",
+    show: bool = True,
+) -> "plt.Figure":
+    """
+    3x2 comparison plot for glucodensity temporal mixture fitting.
+
+    Layout (3 rows x 2 columns):
+      Row 0: [Training history]        [Final MMD² bar]
+      Row 1: [Basis pi(t)]             [NeuralODE pi(t)]
+      Row 2: [Basis mean curves]       [NeuralODE mean curves]
+
+    ``t_grid_np`` should contain actual day values (not normalized).
+    """
+    K = pi_basis_np.shape[1]
+
+    # Switch to weeks if the day range exceeds 30 days
+    day_span = float(t_grid_np[-1] - t_grid_np[0])
+    use_weeks = day_span > 30
+    if use_weeks:
+        time_axis = t_grid_np / 7.0
+        time_label = "Treatment week (approx.)"
+    else:
+        time_axis = t_grid_np
+        time_label = "Treatment day (approx.)"
+
+    fig, axes = plt.subplots(3, 2, figsize=(14, 15))
+
+    # --- Row 0, Col 0: Training curves ---
+    axes[0, 0].plot(history_basis, label="Basis", lw=2.0)
+    axes[0, 0].plot(history_ode, label="NeuralODE", lw=2.0)
+    axes[0, 0].set_title("MMD² Training History")
+    axes[0, 0].set_xlabel("Epoch")
+    axes[0, 0].set_ylabel("MMD²(avg_t)")
+    axes[0, 0].legend(fontsize=9)
+    axes[0, 0].grid(alpha=0.3)
+
+    # --- Row 0, Col 1: Final MMD² bar chart ---
+    methods = ["Basis", "NeuralODE"]
+    final_vals = [history_basis[-1], history_ode[-1]]
+    axes[0, 1].bar(methods, final_vals, color=["C0", "C1"], alpha=0.85)
+    axes[0, 1].set_title("Final MMD²(avg_t)")
+    axes[0, 1].set_ylabel("MMD²")
+    axes[0, 1].grid(alpha=0.3, axis="y")
+
+    # --- Row 1, Col 0: pi(t) for Basis ---
+    for k in range(K):
+        axes[1, 0].plot(time_axis, pi_basis_np[:, k], lw=1.5,
+                        label=f"$\\pi_{{{k+1}}}$")
+    axes[1, 0].set_title("Basis: $\\pi_k(t)$")
+    axes[1, 0].set_xlabel(time_label)
+    axes[1, 0].set_ylabel("Weight")
+    axes[1, 0].set_ylim(0, 1)
+    axes[1, 0].legend(fontsize=7, ncol=2)
+    axes[1, 0].grid(alpha=0.3)
+
+    # --- Row 1, Col 1: pi(t) for NeuralODE ---
+    for k in range(K):
+        axes[1, 1].plot(time_axis, pi_ode_np[:, k], lw=1.5,
+                        label=f"$\\pi_{{{k+1}}}$")
+    axes[1, 1].set_title("NeuralODE: $\\pi_k(t)$")
+    axes[1, 1].set_xlabel(time_label)
+    axes[1, 1].set_ylabel("Weight")
+    axes[1, 1].set_ylim(0, 1)
+    axes[1, 1].legend(fontsize=7, ncol=2)
+    axes[1, 1].grid(alpha=0.3)
+
+    # --- Row 2, Col 0: Basis reconstructed mean intraday curves ---
+    hours = np.linspace(0, 24, recon_basis_np.shape[1])
+    for k in range(K):
+        axes[2, 0].plot(hours, recon_basis_np[k], lw=1.3, label=f"comp {k+1}")
+    axes[2, 0].set_title("Basis: Reconstructed mean curves")
+    axes[2, 0].set_xlabel("Hour of day")
+    axes[2, 0].set_ylabel("Glucose (mg/dL)")
+    axes[2, 0].legend(fontsize=7, ncol=2)
+    axes[2, 0].grid(alpha=0.3)
+
+    # --- Row 2, Col 1: NeuralODE reconstructed mean intraday curves ---
+    for k in range(K):
+        axes[2, 1].plot(hours, recon_ode_np[k], lw=1.3, label=f"comp {k+1}")
+    axes[2, 1].set_title("NeuralODE: Reconstructed mean curves")
+    axes[2, 1].set_xlabel("Hour of day")
+    axes[2, 1].set_ylabel("Glucose (mg/dL)")
+    axes[2, 1].legend(fontsize=7, ncol=2)
+    axes[2, 1].grid(alpha=0.3)
+
+    plt.tight_layout()
+
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "glucodensity_temporal_comparison.pdf")
+    fig.savefig(out_path, format="pdf", bbox_inches="tight")
+    print(f"\nSaved figure: {out_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return fig
+
+
+def plot_glucodensity_temporal_4model_comparison(
+    t_grid_np: np.ndarray,
+    # Training histories
+    history_basis_direct: list,
+    history_ode_direct: list,
+    history_stage1: list,
+    history_l2_basis: list,
+    history_l2_ode: list,
+    # Mixture weights pi(t)
+    pi_basis_direct_np: np.ndarray,
+    pi_ode_direct_np: np.ndarray,
+    pi_stage1_np: np.ndarray,
+    pi_basis_l2_np: np.ndarray,
+    pi_ode_l2_np: np.ndarray,
+    # Reconstructed mean curves
+    recon_basis_np: np.ndarray,
+    recon_ode_np: np.ndarray,
+    recon_stage1_np: np.ndarray,
+    # Final MMD values
+    direct_basis_mmd: float,
+    direct_ode_mmd: float,
+    stage1_mmd: float,
+    twostage_basis_mmd: float,
+    twostage_ode_mmd: float,
+    # Temporal day range
+    t_min_days: float = 0.0,
+    t_max_days: float = 1.0,
+    out_dir: str = ".",
+    show: bool = True,
+) -> "plt.Figure":
+    """
+    4-model comparison plot for glucodensity temporal mixture fitting.
+
+    Layout (4 rows x 3 columns):
+      Row 0: [Training history (MMD)]   [Training history (L2)]   [Final MMD² bar]
+      Row 1: [Direct-Basis pi(t)]       [Direct-ODE pi(t)]       [Stage1 pi(t)]
+      Row 2: [TwoStage-Basis pi(t)]     [TwoStage-ODE pi(t)]     [Mean curves]
+      Row 3: [Basis mean curves]        [ODE mean curves]         [Stage1 mean curves]
+
+    t_grid_np is already in absolute days.
+    """
+    K = pi_basis_direct_np.shape[1]
+
+    # Decide on days vs weeks for time axis
+    day_range = t_max_days - t_min_days
+    use_weeks = day_range > 30
+    if use_weeks:
+        time_axis = t_grid_np / 7.0
+        time_label = "Treatment week"
+    else:
+        time_axis = t_grid_np
+        time_label = "Treatment day"
+
+    fig, axes = plt.subplots(4, 3, figsize=(18, 20))
+
+    # --- Row 0, Col 0: MMD Training curves ---
+    axes[0, 0].plot(history_basis_direct, label="Direct-Basis", lw=1.5)
+    axes[0, 0].plot(history_ode_direct, label="Direct-ODE", lw=1.5)
+    axes[0, 0].plot(history_stage1, label="Stage1-Discrete", lw=1.5, ls="--")
+    axes[0, 0].set_title("MMD² Training History")
+    axes[0, 0].set_xlabel("Epoch")
+    axes[0, 0].set_ylabel("MMD²(avg_t)")
+    axes[0, 0].legend(fontsize=7)
+    axes[0, 0].grid(alpha=0.3)
+
+    # --- Row 0, Col 1: L² distillation history ---
+    axes[0, 1].plot(history_l2_basis, label="Basis L²", lw=1.5)
+    axes[0, 1].plot(history_l2_ode, label="ODE L²", lw=1.5)
+    axes[0, 1].set_title("Stage-2 L² Distillation")
+    axes[0, 1].set_xlabel("Epoch")
+    axes[0, 1].set_ylabel("L² loss")
+    axes[0, 1].legend(fontsize=7)
+    axes[0, 1].grid(alpha=0.3)
+
+    # --- Row 0, Col 2: Final MMD² bar chart ---
+    methods = ["Dir-Basis", "Dir-ODE", "Stage1", "2S-Basis", "2S-ODE"]
+    final_vals = [
+        direct_basis_mmd, direct_ode_mmd, stage1_mmd,
+        twostage_basis_mmd, twostage_ode_mmd,
+    ]
+    bars = axes[0, 2].bar(methods, final_vals, color=["C0", "C1", "C2", "C3", "C4"],
+                          alpha=0.85)
+    axes[0, 2].set_title("Final MMD²(avg_t)")
+    axes[0, 2].set_ylabel("MMD²")
+    axes[0, 2].tick_params(axis="x", rotation=30)
+    axes[0, 2].grid(alpha=0.3, axis="y")
+
+    # --- Row 1: pi(t) for Direct-Basis, Direct-ODE, Stage1 ---
+    for k in range(K):
+        axes[1, 0].plot(time_axis, pi_basis_direct_np[:, k], lw=1.5,
+                        label=f"$\\pi_{{{k+1}}}$")
+    axes[1, 0].set_title("Direct-Basis: $\\pi_k(t)$")
+    axes[1, 0].set_xlabel(time_label)
+    axes[1, 0].set_ylabel("Weight")
+    axes[1, 0].set_ylim(0, 1)
+    axes[1, 0].legend(fontsize=7, ncol=2)
+    axes[1, 0].grid(alpha=0.3)
+
+    for k in range(K):
+        axes[1, 1].plot(time_axis, pi_ode_direct_np[:, k], lw=1.5,
+                        label=f"$\\pi_{{{k+1}}}$")
+    axes[1, 1].set_title("Direct-ODE: $\\pi_k(t)$")
+    axes[1, 1].set_xlabel(time_label)
+    axes[1, 1].set_ylabel("Weight")
+    axes[1, 1].set_ylim(0, 1)
+    axes[1, 1].legend(fontsize=7, ncol=2)
+    axes[1, 1].grid(alpha=0.3)
+
+    for k in range(K):
+        axes[1, 2].plot(time_axis, pi_stage1_np[:, k], lw=1.5,
+                        label=f"$\\pi_{{{k+1}}}$")
+    axes[1, 2].set_title("Stage1-Discrete: $\\pi_k(t)$")
+    axes[1, 2].set_xlabel(time_label)
+    axes[1, 2].set_ylabel("Weight")
+    axes[1, 2].set_ylim(0, 1)
+    axes[1, 2].legend(fontsize=7, ncol=2)
+    axes[1, 2].grid(alpha=0.3)
+
+    # --- Row 2: TwoStage-Basis pi, TwoStage-ODE pi, overlay comparison ---
+    for k in range(K):
+        axes[2, 0].plot(time_axis, pi_basis_l2_np[:, k], lw=1.5,
+                        label=f"$\\pi_{{{k+1}}}$")
+        axes[2, 0].plot(time_axis, pi_stage1_np[:, k], lw=1.0, ls="--",
+                        color=f"C{k}", alpha=0.5)
+    axes[2, 0].set_title("TwoStage-Basis: $\\pi_k(t)$ (dashed=stage1)")
+    axes[2, 0].set_xlabel(time_label)
+    axes[2, 0].set_ylabel("Weight")
+    axes[2, 0].set_ylim(0, 1)
+    axes[2, 0].legend(fontsize=7, ncol=2)
+    axes[2, 0].grid(alpha=0.3)
+
+    for k in range(K):
+        axes[2, 1].plot(time_axis, pi_ode_l2_np[:, k], lw=1.5,
+                        label=f"$\\pi_{{{k+1}}}$")
+        axes[2, 1].plot(time_axis, pi_stage1_np[:, k], lw=1.0, ls="--",
+                        color=f"C{k}", alpha=0.5)
+    axes[2, 1].set_title("TwoStage-ODE: $\\pi_k(t)$ (dashed=stage1)")
+    axes[2, 1].set_xlabel(time_label)
+    axes[2, 1].set_ylabel("Weight")
+    axes[2, 1].set_ylim(0, 1)
+    axes[2, 1].legend(fontsize=7, ncol=2)
+    axes[2, 1].grid(alpha=0.3)
+
+    # Row 2, Col 2: all models' pi_1(t) overlaid for comparison
+    axes[2, 2].plot(time_axis, pi_basis_direct_np[:, 0], lw=1.5,
+                    label="Dir-Basis")
+    axes[2, 2].plot(time_axis, pi_ode_direct_np[:, 0], lw=1.5,
+                    label="Dir-ODE")
+    axes[2, 2].plot(time_axis, pi_stage1_np[:, 0], lw=1.5, ls="--",
+                    label="Stage1")
+    axes[2, 2].plot(time_axis, pi_basis_l2_np[:, 0], lw=1.5, ls=":",
+                    label="2S-Basis")
+    axes[2, 2].plot(time_axis, pi_ode_l2_np[:, 0], lw=1.5, ls=":",
+                    label="2S-ODE")
+    axes[2, 2].set_title("All models: $\\pi_1(t)$")
+    axes[2, 2].set_xlabel(time_label)
+    axes[2, 2].set_ylabel("Weight")
+    axes[2, 2].set_ylim(0, 1)
+    axes[2, 2].legend(fontsize=6, ncol=2)
+    axes[2, 2].grid(alpha=0.3)
+
+    # --- Row 3: Reconstructed mean intraday curves ---
+    hours = np.linspace(0, 24, recon_basis_np.shape[1])
+    for k in range(K):
+        axes[3, 0].plot(hours, recon_basis_np[k], lw=1.3, label=f"comp {k+1}")
+    axes[3, 0].set_title("Direct-Basis: Mean intraday curves")
+    axes[3, 0].set_xlabel("Hour of day")
+    axes[3, 0].set_ylabel("Glucose (mg/dL)")
+    axes[3, 0].legend(fontsize=7, ncol=2)
+    axes[3, 0].grid(alpha=0.3)
+
+    for k in range(K):
+        axes[3, 1].plot(hours, recon_ode_np[k], lw=1.3, label=f"comp {k+1}")
+    axes[3, 1].set_title("Direct-ODE: Mean intraday curves")
+    axes[3, 1].set_xlabel("Hour of day")
+    axes[3, 1].set_ylabel("Glucose (mg/dL)")
+    axes[3, 1].legend(fontsize=7, ncol=2)
+    axes[3, 1].grid(alpha=0.3)
+
+    for k in range(K):
+        axes[3, 2].plot(hours, recon_stage1_np[k], lw=1.3, label=f"comp {k+1}")
+    axes[3, 2].set_title("Stage1: Mean intraday curves")
+    axes[3, 2].set_xlabel("Hour of day")
+    axes[3, 2].set_ylabel("Glucose (mg/dL)")
+    axes[3, 2].legend(fontsize=7, ncol=2)
+    axes[3, 2].grid(alpha=0.3)
+
+    fig.suptitle("Glucodensity Temporal Mixture: 4-Model Comparison", fontsize=14,
+                 y=1.01)
+    plt.tight_layout()
+
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "glucodensity_temporal_4model_comparison.pdf")
+    fig.savefig(out_path, format="pdf", bbox_inches="tight")
+    print(f"\nSaved figure: {out_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return fig
+
+
+def plot_glucodensity_variance(
+    var_basis_np: np.ndarray,
+    var_ode_np: np.ndarray,
+    out_dir: str = ".",
+    show: bool = True,
+) -> "plt.Figure":
+    """Variance per coefficient for both models (1x2 subplots)."""
+    K = var_basis_np.shape[0]
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    for k in range(K):
+        axes[0].plot(var_basis_np[k], lw=1.2, label=f"comp {k+1}")
+    axes[0].set_title("Basis: Variance per coefficient")
+    axes[0].set_xlabel("Coefficient index")
+    axes[0].set_ylabel("Variance")
+    axes[0].legend(fontsize=7, ncol=2)
+    axes[0].grid(alpha=0.3)
+
+    for k in range(K):
+        axes[1].plot(var_ode_np[k], lw=1.2, label=f"comp {k+1}")
+    axes[1].set_title("NeuralODE: Variance per coefficient")
+    axes[1].set_xlabel("Coefficient index")
+    axes[1].set_ylabel("Variance")
+    axes[1].legend(fontsize=7, ncol=2)
+    axes[1].grid(alpha=0.3)
+
+    plt.tight_layout()
+
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "glucodensity_temporal_variance.pdf")
+    fig.savefig(out_path, format="pdf", bbox_inches="tight")
+    print(f"Saved figure: {out_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return fig
+
+
+def plot_cluster_probabilities_by_group(
+    patient_posteriors: dict,
+    patient_time_days: dict,
+    control_ids: list,
+    treatment_ids: list,
+    n_time_bins: int = 10,
+    include_difference_panel: bool = True,
+    out_dir: str = ".",
+    show: bool = True,
+) -> "plt.Figure":
+    """
+    Average cluster probability over time for control vs treatment groups.
+
+    By default this creates:
+      1) Control trajectories by cluster
+      2) Treatment trajectories by cluster
+      3) Treatment-minus-control deltas + TV separation curve
+    """
+    control_ids_set = set(control_ids)
+    treatment_ids_set = set(treatment_ids)
+
+    K = next(iter(patient_posteriors.values())).shape[1]
+
+    # Collect (day, posterior_vector) for each group
+    control_data = []
+    treatment_data = []
+    for pid, posteriors in patient_posteriors.items():
+        days = patient_time_days[pid]
+        for i in range(len(days)):
+            entry = (days[i], posteriors[i])
+            if pid in control_ids_set:
+                control_data.append(entry)
+            elif pid in treatment_ids_set:
+                treatment_data.append(entry)
+
+    if not (control_data or treatment_data):
+        print("Warning: no data for cluster probability plot.")
+        return None
+
+    # Common time range for binning
+    all_days_list = [d for d, _ in control_data + treatment_data]
+    min_day = min(all_days_list)
+    max_day = max(all_days_list)
+    if max_day - min_day < 1e-9:
+        max_day = min_day + 1.0
+    bin_edges = np.linspace(min_day, max_day + 1e-9, n_time_bins + 1)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2.0
+
+    def _bin_and_average(data):
+        binned = [[] for _ in range(n_time_bins)]
+        for day, post in data:
+            b = min(
+                int(np.searchsorted(bin_edges, day, side="right")) - 1,
+                n_time_bins - 1,
+            )
+            b = max(0, b)
+            binned[b].append(post)
+        means = np.full((n_time_bins, K), np.nan)
+        stds = np.full((n_time_bins, K), np.nan)
+        counts = np.zeros(n_time_bins)
+        for b in range(n_time_bins):
+            if binned[b]:
+                arr = np.array(binned[b])
+                means[b] = arr.mean(axis=0)
+                stds[b] = arr.std(axis=0)
+                counts[b] = len(binned[b])
+        return means, stds, counts
+
+    def _trajectory_tv_stats(means: np.ndarray, counts: np.ndarray) -> dict:
+        valid_idx = np.where(counts > 0)[0]
+        if len(valid_idx) >= 2:
+            traj = means[valid_idx].copy()
+            if len(valid_idx) >= 3:
+                traj_smooth = traj.copy()
+                for i in range(len(valid_idx)):
+                    left = max(0, i - 1)
+                    right = min(len(valid_idx), i + 2)
+                    traj_smooth[i] = traj[left:right].mean(axis=0)
+                traj = traj_smooth
+
+            step_vals = []
+            for i in range(len(valid_idx) - 1):
+                step_vals.append(0.5 * np.sum(np.abs(traj[i + 1] - traj[i])))
+            step_vals = np.array(step_vals)
+            net_tv = 0.5 * np.sum(np.abs(traj[-1] - traj[0]))
+            return {
+                "mean_step_tv": float(step_vals.mean()),
+                "net_tv": float(net_tv),
+            }
+        return {"mean_step_tv": 0.0, "net_tv": 0.0}
+
+    ctrl_means, ctrl_stds, ctrl_counts = _bin_and_average(control_data)
+    treat_means, treat_stds, treat_counts = _bin_and_average(treatment_data)
+
+    # Decide axis label (weeks vs days)
+    use_weeks = max_day > 30
+    if use_weeks:
+        time_axis = bin_centers / 7.0
+        time_label = "Treatment week"
+    else:
+        time_axis = bin_centers
+        time_label = "Treatment day"
+
+    if include_difference_panel:
+        fig, axes = plt.subplots(
+            1, 3, figsize=(20, 5), gridspec_kw={"width_ratios": [1.0, 1.0, 1.1]}
+        )
+        ax_ctrl, ax_treat, ax_diff = axes
+    else:
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+        ax_ctrl, ax_treat = axes
+        ax_diff = None
+
+    colors = [plt.cm.tab10(k) for k in range(K)]
+
+    for k in range(K):
+        valid_c = ctrl_counts > 0
+        if valid_c.any():
+            ax_ctrl.plot(
+                time_axis[valid_c], ctrl_means[valid_c, k],
+                lw=2, color=colors[k], label=f"Cluster {k+1}",
+            )
+            ax_ctrl.fill_between(
+                time_axis[valid_c],
+                (ctrl_means[valid_c, k] - ctrl_stds[valid_c, k]).clip(0, 1),
+                (ctrl_means[valid_c, k] + ctrl_stds[valid_c, k]).clip(0, 1),
+                alpha=0.15, color=colors[k],
+            )
+        valid_t = treat_counts > 0
+        if valid_t.any():
+            ax_treat.plot(
+                time_axis[valid_t], treat_means[valid_t, k],
+                lw=2, color=colors[k], label=f"Cluster {k+1}",
+            )
+            ax_treat.fill_between(
+                time_axis[valid_t],
+                (treat_means[valid_t, k] - treat_stds[valid_t, k]).clip(0, 1),
+                (treat_means[valid_t, k] + treat_stds[valid_t, k]).clip(0, 1),
+                alpha=0.15, color=colors[k],
+            )
+
+    ax_ctrl.set_title("Control group")
+    ax_ctrl.set_xlabel(time_label)
+    ax_ctrl.set_ylabel("Cluster probability")
+    ax_ctrl.set_ylim(0, 1)
+    ax_ctrl.legend(fontsize=8)
+    ax_ctrl.grid(alpha=0.3)
+
+    ax_treat.set_title("Treatment group")
+    ax_treat.set_xlabel(time_label)
+    ax_treat.set_ylim(0, 1)
+    ax_treat.legend(fontsize=8)
+    ax_treat.grid(alpha=0.3)
+
+    if include_difference_panel and ax_diff is not None:
+        valid_both = (ctrl_counts > 0) & (treat_counts > 0)
+        if valid_both.any():
+            diff_means = treat_means - ctrl_means
+            sep_tv = 0.5 * np.sum(np.abs(diff_means), axis=1)
+            ctrl_dyn = _trajectory_tv_stats(ctrl_means, ctrl_counts)
+            treat_dyn = _trajectory_tv_stats(treat_means, treat_counts)
+
+            for k in range(K):
+                ax_diff.plot(
+                    time_axis[valid_both],
+                    diff_means[valid_both, k],
+                    lw=2,
+                    color=colors[k],
+                    label=f"Δ Cluster {k+1}",
+                )
+
+            ax_diff.plot(
+                time_axis[valid_both],
+                sep_tv[valid_both],
+                lw=2.2,
+                color="black",
+                ls="--",
+                label="TV distance",
+            )
+            if valid_both.sum() >= 2:
+                t_valid = time_axis[valid_both]
+                tv_valid = sep_tv[valid_both]
+                slope = np.polyfit(t_valid, tv_valid, 1)[0]
+                delta = tv_valid[-1] - tv_valid[0]
+                unit = "week" if use_weeks else "day"
+                ax_diff.text(
+                    0.02, 0.95,
+                    (
+                        f"ΔTV={delta:+.3f}\n"
+                        f"Slope={slope:+.3f}/{unit}\n"
+                        f"Ctrl stepTV={ctrl_dyn['mean_step_tv']:.3f}\n"
+                        f"Treat stepTV={treat_dyn['mean_step_tv']:.3f}\n"
+                        f"Treat-Ctrl={treat_dyn['mean_step_tv'] - ctrl_dyn['mean_step_tv']:+.3f}"
+                    ),
+                    transform=ax_diff.transAxes,
+                    va="top",
+                    fontsize=9,
+                    bbox=dict(facecolor="white", edgecolor="0.8", alpha=0.8),
+                )
+        ax_diff.axhline(0.0, color="0.25", lw=1, alpha=0.8)
+        ax_diff.set_title("Treatment - Control")
+        ax_diff.set_xlabel(time_label)
+        ax_diff.set_ylabel("Probability difference")
+        ax_diff.set_ylim(-1, 1)
+        ax_diff.grid(alpha=0.3)
+        ax_diff.legend(fontsize=8, loc="best")
+
+    fig.suptitle("Cluster membership probability over time", fontsize=13)
+    plt.tight_layout()
+
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "glucodensity_cluster_probs_by_group.pdf")
+    fig.savefig(out_path, format="pdf", bbox_inches="tight")
+    print(f"Saved figure: {out_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return fig
+
+
+def plot_ternary_simplex_evolution(
+    patient_posteriors: dict,
+    patient_time_norm: dict,
+    control_ids: list,
+    treatment_ids: list,
+    out_dir: str = ".",
+    show: bool = True,
+) -> "plt.Figure":
+    """
+    Ternary simplex plot showing each patient's cluster trajectory.
+
+    Requires exactly K=3 clusters.  Each patient traces a path on the
+    2-simplex (equilateral triangle).  Control patients are blue,
+    treatment patients are red.  Line intensity fades from light (t=0)
+    to strong (t=1).
+    """
+    from matplotlib.lines import Line2D
+
+    control_ids_set = set(control_ids)
+    treatment_ids_set = set(treatment_ids)
+
+    K = next(iter(patient_posteriors.values())).shape[1]
+    if K != 3:
+        raise ValueError(f"Ternary plot requires K=3, got K={K}")
+
+    # Equilateral triangle vertices
+    v1 = np.array([0.0, 0.0])
+    v2 = np.array([1.0, 0.0])
+    v3 = np.array([0.5, np.sqrt(3) / 2.0])
+    vertices = np.array([v1, v2, v3])
+
+    fig, ax = plt.subplots(figsize=(10, 9))
+
+    # Draw triangle border
+    triangle = plt.Polygon(
+        [v1, v2, v3], fill=False, edgecolor="black", linewidth=2,
+    )
+    ax.add_patch(triangle)
+
+    # Label vertices
+    offset = 0.06
+    ax.text(v1[0], v1[1] - offset, "Cluster 1", ha="center", fontsize=11,
+            fontweight="bold")
+    ax.text(v2[0], v2[1] - offset, "Cluster 2", ha="center", fontsize=11,
+            fontweight="bold")
+    ax.text(v3[0], v3[1] + offset, "Cluster 3", ha="center", fontsize=11,
+            fontweight="bold")
+
+    def _plot_trajectory(ax, posteriors, t_norm, base_color, lw=0.5):
+        """Plot a single patient's trajectory on the simplex."""
+        pts = posteriors @ vertices  # barycentric → 2D, shape (n_w, 2)
+        n = len(pts)
+        for i in range(n - 1):
+            # Alpha increases with time: lighter at t=0, stronger at t=1
+            alpha = 0.08 + 0.72 * t_norm[min(i + 1, n - 1)]
+            ax.plot(
+                pts[i:i + 2, 0], pts[i:i + 2, 1],
+                color=base_color, alpha=alpha, linewidth=lw,
+            )
+        # Start / end markers
+        if n > 0:
+            ax.plot(pts[0, 0], pts[0, 1], "o", color=base_color,
+                    markersize=2, alpha=0.25)
+            ax.plot(pts[-1, 0], pts[-1, 1], "s", color=base_color,
+                    markersize=3, alpha=0.85)
+
+    for pid, posteriors in patient_posteriors.items():
+        t_norm = patient_time_norm[pid]
+        if pid in control_ids_set:
+            _plot_trajectory(ax, posteriors, t_norm, "tab:blue")
+        elif pid in treatment_ids_set:
+            _plot_trajectory(ax, posteriors, t_norm, "tab:red")
+
+    # Legend
+    legend_elements = [
+        Line2D([0], [0], color="tab:blue", lw=2, label="Control"),
+        Line2D([0], [0], color="tab:red", lw=2, label="Treatment"),
+        Line2D([0], [0], marker="o", color="gray", markerfacecolor="gray",
+               markersize=6, lw=0, label="Start ($t=0$)"),
+        Line2D([0], [0], marker="s", color="gray", markerfacecolor="gray",
+               markersize=6, lw=0, label="End ($t=1$)"),
+    ]
+    ax.legend(handles=legend_elements, loc="upper right", fontsize=10)
+
+    ax.set_xlim(-0.12, 1.12)
+    ax.set_ylim(-0.15, v3[1] + 0.12)
+    ax.set_aspect("equal")
+    ax.set_title("Patient evolution in cluster probability simplex",
+                 fontsize=13)
+    ax.axis("off")
+
+    plt.tight_layout()
+
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "glucodensity_ternary_evolution.pdf")
+    fig.savefig(out_path, format="pdf", bbox_inches="tight")
+    print(f"Saved figure: {out_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Per-patient simplex grid (static, 5×5)
+# ---------------------------------------------------------------------------
+
+
+def plot_ternary_simplex_grid(
+    patient_posteriors: dict,
+    patient_time_norm: dict,
+    control_ids: list,
+    treatment_ids: list,
+    n_cols: int = 5,
+    n_rows: int = 5,
+    out_dir: str = ".",
+    show: bool = True,
+) -> "plt.Figure":
+    """
+    Plot a grid of individual ternary simplex subplots, one per patient.
+
+    Each patient traces an arrow path on the 2-simplex (equilateral
+    triangle).  Control patients are drawn in blue, treatment in red.
+    Cluster vertices are marked with labelled dots.
+
+    Selects up to ``n_rows * n_cols`` patients (balanced between groups).
+    """
+    from matplotlib.lines import Line2D
+
+    control_ids_set = set(control_ids)
+    treatment_ids_set = set(treatment_ids)
+
+    K = next(iter(patient_posteriors.values())).shape[1]
+    if K != 3:
+        raise ValueError(f"Ternary plot requires K=3, got K={K}")
+
+    # Equilateral triangle vertices
+    v1 = np.array([0.0, 0.0])
+    v2 = np.array([1.0, 0.0])
+    v3 = np.array([0.5, np.sqrt(3) / 2.0])
+    vertices = np.array([v1, v2, v3])
+
+    # Partition patients into control & treatment
+    ctrl_pids = [p for p in patient_posteriors if p in control_ids_set]
+    treat_pids = [p for p in patient_posteriors if p in treatment_ids_set]
+
+    # Balanced selection: roughly half control, half treatment
+    max_patients = n_rows * n_cols
+    n_ctrl = min(len(ctrl_pids), max_patients // 2)
+    n_treat = min(len(treat_pids), max_patients - n_ctrl)
+    n_ctrl = min(len(ctrl_pids), max_patients - n_treat)  # fill remainder
+
+    rng = np.random.RandomState(42)
+    selected = (
+        list(rng.choice(ctrl_pids, size=n_ctrl, replace=False))
+        + list(rng.choice(treat_pids, size=n_treat, replace=False))
+    )
+    rng.shuffle(selected)
+
+    fig, axes = plt.subplots(
+        n_rows, n_cols,
+        figsize=(3.2 * n_cols, 3.2 * n_rows),
+    )
+    axes_flat = axes.flatten()
+
+    cluster_colors = ["#2ca02c", "#ff7f0e", "#9467bd"]  # green, orange, purple
+
+    for idx, ax in enumerate(axes_flat):
+        # Draw triangle border
+        triangle = plt.Polygon(
+            [v1, v2, v3], fill=False, edgecolor="black", linewidth=1.2,
+        )
+        ax.add_patch(triangle)
+
+        # Cluster vertex dots and labels
+        for ci, (vx, label) in enumerate(
+            zip(vertices, ["C1", "C2", "C3"])
+        ):
+            ax.plot(
+                vx[0], vx[1], "o",
+                color=cluster_colors[ci], markersize=7, zorder=5,
+            )
+            dy = -0.08 if ci < 2 else 0.08
+            ax.text(
+                vx[0], vx[1] + dy, label,
+                ha="center", va="center", fontsize=7,
+                fontweight="bold", color=cluster_colors[ci],
+            )
+
+        if idx < len(selected):
+            pid = selected[idx]
+            posteriors = patient_posteriors[pid]
+            t_norm = patient_time_norm[pid]
+            pts = posteriors @ vertices  # (n_w, 2)
+
+            base_color = "tab:blue" if pid in control_ids_set else "tab:red"
+            group_label = "C" if pid in control_ids_set else "T"
+
+            # Draw arrows between consecutive points
+            n_pts = len(pts)
+            for i in range(n_pts - 1):
+                alpha = 0.15 + 0.75 * t_norm[min(i + 1, n_pts - 1)]
+                ax.annotate(
+                    "",
+                    xy=(pts[i + 1, 0], pts[i + 1, 1]),
+                    xytext=(pts[i, 0], pts[i, 1]),
+                    arrowprops=dict(
+                        arrowstyle="-|>",
+                        color=base_color,
+                        alpha=alpha,
+                        lw=0.8,
+                        mutation_scale=6,
+                    ),
+                )
+
+            # Start / end markers
+            if n_pts > 0:
+                ax.plot(pts[0, 0], pts[0, 1], "o", color=base_color,
+                        markersize=3, alpha=0.5, zorder=4)
+                ax.plot(pts[-1, 0], pts[-1, 1], "s", color=base_color,
+                        markersize=4, alpha=0.9, zorder=4)
+
+            ax.set_title(f"Pt {pid} ({group_label})", fontsize=8, pad=2)
+        else:
+            ax.set_visible(False)
+
+        ax.set_xlim(-0.12, 1.12)
+        ax.set_ylim(-0.15, v3[1] + 0.12)
+        ax.set_aspect("equal")
+        ax.axis("off")
+
+    # Global legend below the grid
+    legend_elements = [
+        Line2D([0], [0], color="tab:blue", lw=2, label="Control"),
+        Line2D([0], [0], color="tab:red", lw=2, label="Treatment"),
+        Line2D([0], [0], marker="o", color="gray", markerfacecolor="gray",
+               markersize=6, lw=0, label="Start"),
+        Line2D([0], [0], marker="s", color="gray", markerfacecolor="gray",
+               markersize=6, lw=0, label="End"),
+    ]
+    for ci, clabel in enumerate(["Cluster 1", "Cluster 2", "Cluster 3"]):
+        legend_elements.append(
+            Line2D([0], [0], marker="o", color=cluster_colors[ci],
+                   markerfacecolor=cluster_colors[ci], markersize=8,
+                   lw=0, label=clabel),
+        )
+
+    fig.legend(
+        handles=legend_elements, loc="lower center",
+        ncol=len(legend_elements), fontsize=9,
+        frameon=True, bbox_to_anchor=(0.5, -0.01),
+    )
+
+    fig.suptitle(
+        "Per-patient evolution in cluster probability simplex",
+        fontsize=14, y=1.01,
+    )
+    plt.tight_layout()
+
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "glucodensity_ternary_grid.pdf")
+    fig.savefig(out_path, format="pdf", bbox_inches="tight")
+    print(f"Saved figure: {out_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Interactive HTML simplex evolution (Plotly)
+# ---------------------------------------------------------------------------
+
+
+def plot_ternary_simplex_interactive(
+    patient_posteriors: dict,
+    patient_time_days: dict,
+    control_ids: list,
+    treatment_ids: list,
+    n_time_steps: int = 30,
+    trail_length: int = 6,
+    out_dir: str = ".",
+) -> str:
+    """
+    Interactive Plotly ternary plot with a time slider.
+
+    Each group (control / treatment) is shown as the in-group average
+    centroid (same binning as ``plot_cluster_probabilities_by_group``)
+    with a fading trail of recent positions.
+
+    Parameters
+    ----------
+    trail_length : int
+        Number of past time steps shown as a fading trail.
+
+    Returns the path to the saved HTML file.
+    """
+    import plotly.graph_objects as go
+
+    control_ids_set = set(control_ids)
+    treatment_ids_set = set(treatment_ids)
+
+    K = next(iter(patient_posteriors.values())).shape[1]
+    if K != 3:
+        raise ValueError(f"Ternary plot requires K=3, got K={K}")
+
+    # Collect (day, posterior_vector) for each group — same as
+    # plot_cluster_probabilities_by_group
+    control_data = []
+    treatment_data = []
+    for pid, posteriors in patient_posteriors.items():
+        days = patient_time_days[pid]
+        for i in range(len(days)):
+            entry = (days[i], posteriors[i])
+            if pid in control_ids_set:
+                control_data.append(entry)
+            elif pid in treatment_ids_set:
+                treatment_data.append(entry)
+
+    if not (control_data or treatment_data):
+        print("Warning: no data for ternary simplex plot.")
+        return ""
+
+    # Common time range for binning
+    all_days_list = [d for d, _ in control_data + treatment_data]
+    max_day = max(all_days_list)
+    bin_edges = np.linspace(0, max_day + 1e-9, n_time_steps + 1)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2.0
+
+    # Convert to weeks for display
+    t_weeks = bin_centers / 7.0
+
+    def _bin_and_average(data):
+        """Bin (day, posterior) pairs and average within each bin."""
+        binned = [[] for _ in range(n_time_steps)]
+        for day, post in data:
+            b = min(
+                int(np.searchsorted(bin_edges, day, side="right")) - 1,
+                n_time_steps - 1,
+            )
+            b = max(0, b)
+            binned[b].append(post)
+        means = np.full((n_time_steps, K), np.nan)
+        for b in range(n_time_steps):
+            if binned[b]:
+                arr = np.array(binned[b])
+                means[b] = arr.mean(axis=0)
+        # Forward-fill then backward-fill NaN bins so the trajectory
+        # is continuous (needed for trail visualisation)
+        for b in range(1, n_time_steps):
+            if np.isnan(means[b, 0]):
+                means[b] = means[b - 1]
+        for b in range(n_time_steps - 2, -1, -1):
+            if np.isnan(means[b, 0]):
+                means[b] = means[b + 1]
+        return means
+
+    ctrl_centroid = _bin_and_average(control_data)    # (n_time_steps, 3)
+    treat_centroid = _bin_and_average(treatment_data)  # (n_time_steps, 3)
+
+    # --- Build Plotly frames ---
+    # Every frame must have exactly 4 traces (matched by index) so that
+    # Plotly does not drop traces when animating between frames:
+    #   0: Control trail   1: Control head
+    #   2: Treatment trail  3: Treatment head
+    frames = []
+    for ti in range(n_time_steps):
+        trail_start = max(0, ti - trail_length + 1)
+
+        # --- Control trail + head ---
+        seg_a = ctrl_centroid[trail_start:ti + 1, 0]
+        seg_b = ctrl_centroid[trail_start:ti + 1, 1]
+        seg_c = ctrl_centroid[trail_start:ti + 1, 2]
+        # Trail (use duplicate point when only 1 sample so line is invisible
+        # but the trace still exists at the correct index)
+        if len(seg_a) >= 2:
+            trail_a, trail_b, trail_c = seg_a, seg_b, seg_c
+        else:
+            trail_a = np.array([seg_a[0], seg_a[0]])
+            trail_b = np.array([seg_b[0], seg_b[0]])
+            trail_c = np.array([seg_c[0], seg_c[0]])
+        ctrl_trail = go.Scatterternary(
+            a=trail_a, b=trail_b, c=trail_c,
+            mode="lines",
+            line=dict(color="royalblue", width=3),
+            opacity=0.45,
+            name="Control trail",
+            showlegend=False,
+            hoverinfo="skip",
+        )
+        hover_ctrl = (f"Control avg<br>Week {t_weeks[ti]:.1f}<br>"
+                      f"C1={seg_a[-1]:.2f} C2={seg_b[-1]:.2f} C3={seg_c[-1]:.2f}")
+        ctrl_head = go.Scatterternary(
+            a=[seg_a[-1]], b=[seg_b[-1]], c=[seg_c[-1]],
+            mode="markers",
+            marker=dict(size=12, color="royalblue", opacity=0.9,
+                        line=dict(width=1, color="white"),
+                        symbol="circle"),
+            name="Control",
+            text=[hover_ctrl],
+            hoverinfo="text",
+            showlegend=True,
+        )
+
+        # --- Treatment trail + head ---
+        seg_a = treat_centroid[trail_start:ti + 1, 0]
+        seg_b = treat_centroid[trail_start:ti + 1, 1]
+        seg_c = treat_centroid[trail_start:ti + 1, 2]
+        if len(seg_a) >= 2:
+            trail_a, trail_b, trail_c = seg_a, seg_b, seg_c
+        else:
+            trail_a = np.array([seg_a[0], seg_a[0]])
+            trail_b = np.array([seg_b[0], seg_b[0]])
+            trail_c = np.array([seg_c[0], seg_c[0]])
+        treat_trail = go.Scatterternary(
+            a=trail_a, b=trail_b, c=trail_c,
+            mode="lines",
+            line=dict(color="crimson", width=3),
+            opacity=0.45,
+            name="Treatment trail",
+            showlegend=False,
+            hoverinfo="skip",
+        )
+        hover_treat = (f"Treatment avg<br>Week {t_weeks[ti]:.1f}<br>"
+                       f"C1={seg_a[-1]:.2f} C2={seg_b[-1]:.2f} C3={seg_c[-1]:.2f}")
+        treat_head = go.Scatterternary(
+            a=[seg_a[-1]], b=[seg_b[-1]], c=[seg_c[-1]],
+            mode="markers",
+            marker=dict(size=12, color="crimson", opacity=0.9,
+                        line=dict(width=1, color="white"),
+                        symbol="diamond"),
+            name="Treatment",
+            text=[hover_treat],
+            hoverinfo="text",
+            showlegend=True,
+        )
+
+        frames.append(go.Frame(
+            data=[ctrl_trail, ctrl_head, treat_trail, treat_head],
+            name=f"{ti}",
+        ))
+
+    # Initial data (first frame)
+    initial_data = list(frames[0].data)
+
+    # Slider — labelled in weeks
+    sliders = [dict(
+        active=0,
+        currentvalue=dict(prefix="Week: ", suffix="", font=dict(size=14)),
+        pad=dict(b=10, t=50),
+        steps=[
+            dict(
+                method="animate",
+                args=[[f"{ti}"], dict(
+                    mode="immediate",
+                    frame=dict(duration=0, redraw=True),
+                    transition=dict(duration=0),
+                )],
+                label=f"{t_weeks[ti]:.1f}",
+            )
+            for ti in range(n_time_steps)
+        ],
+    )]
+
+    # Play / pause buttons — positioned in the upper right
+    updatemenus = [dict(
+        type="buttons",
+        showactive=False,
+        y=1.12, x=0.98, xanchor="right",
+        buttons=[
+            dict(
+                label="&#9654; Play",
+                method="animate",
+                args=[None, dict(
+                    frame=dict(duration=120, redraw=True),
+                    fromcurrent=True,
+                    transition=dict(duration=60),
+                )],
+            ),
+            dict(
+                label="&#9724; Pause",
+                method="animate",
+                args=[[None], dict(
+                    frame=dict(duration=0, redraw=False),
+                    mode="immediate",
+                    transition=dict(duration=0),
+                )],
+            ),
+        ],
+    )]
+
+    fig = go.Figure(
+        data=initial_data,
+        frames=frames,
+        layout=go.Layout(
+            ternary=dict(
+                sum=1,
+                aaxis=dict(title="Cluster 1", min=0, linewidth=2,
+                           ticks="outside"),
+                baxis=dict(title="Cluster 2", min=0, linewidth=2,
+                           ticks="outside"),
+                caxis=dict(title="Cluster 3", min=0, linewidth=2,
+                           ticks="outside"),
+            ),
+            title=dict(
+                text="Patient group evolution on cluster probability simplex",
+                font=dict(size=16),
+            ),
+            sliders=sliders,
+            updatemenus=updatemenus,
+            legend=dict(
+                x=0.02, y=0.98, bgcolor="rgba(255,255,255,0.8)",
+                bordercolor="gray", borderwidth=1,
+            ),
+            width=800,
+            height=750,
+        ),
+    )
+
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "glucodensity_ternary_interactive.html")
+    fig.write_html(out_path, include_plotlyjs="cdn")
+    print(f"Saved interactive plot: {out_path}")
+    return out_path
