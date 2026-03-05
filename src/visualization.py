@@ -1124,13 +1124,17 @@ def plot_cluster_probabilities_by_group(
     control_ids: list,
     treatment_ids: list,
     n_time_bins: int = 10,
+    include_difference_panel: bool = True,
     out_dir: str = ".",
     show: bool = True,
 ) -> "plt.Figure":
     """
     Average cluster probability over time for control vs treatment groups.
 
-    Each group gets a subplot showing how cluster membership evolves.
+    By default this creates:
+      1) Control trajectories by cluster
+      2) Treatment trajectories by cluster
+      3) Treatment-minus-control deltas + TV separation curve
     """
     control_ids_set = set(control_ids)
     treatment_ids_set = set(treatment_ids)
@@ -1155,8 +1159,11 @@ def plot_cluster_probabilities_by_group(
 
     # Common time range for binning
     all_days_list = [d for d, _ in control_data + treatment_data]
+    min_day = min(all_days_list)
     max_day = max(all_days_list)
-    bin_edges = np.linspace(0, max_day + 1e-9, n_time_bins + 1)
+    if max_day - min_day < 1e-9:
+        max_day = min_day + 1.0
+    bin_edges = np.linspace(min_day, max_day + 1e-9, n_time_bins + 1)
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2.0
 
     def _bin_and_average(data):
@@ -1179,6 +1186,29 @@ def plot_cluster_probabilities_by_group(
                 counts[b] = len(binned[b])
         return means, stds, counts
 
+    def _trajectory_tv_stats(means: np.ndarray, counts: np.ndarray) -> dict:
+        valid_idx = np.where(counts > 0)[0]
+        if len(valid_idx) >= 2:
+            traj = means[valid_idx].copy()
+            if len(valid_idx) >= 3:
+                traj_smooth = traj.copy()
+                for i in range(len(valid_idx)):
+                    left = max(0, i - 1)
+                    right = min(len(valid_idx), i + 2)
+                    traj_smooth[i] = traj[left:right].mean(axis=0)
+                traj = traj_smooth
+
+            step_vals = []
+            for i in range(len(valid_idx) - 1):
+                step_vals.append(0.5 * np.sum(np.abs(traj[i + 1] - traj[i])))
+            step_vals = np.array(step_vals)
+            net_tv = 0.5 * np.sum(np.abs(traj[-1] - traj[0]))
+            return {
+                "mean_step_tv": float(step_vals.mean()),
+                "net_tv": float(net_tv),
+            }
+        return {"mean_step_tv": 0.0, "net_tv": 0.0}
+
     ctrl_means, ctrl_stds, ctrl_counts = _bin_and_average(control_data)
     treat_means, treat_stds, treat_counts = _bin_and_average(treatment_data)
 
@@ -1191,17 +1221,26 @@ def plot_cluster_probabilities_by_group(
         time_axis = bin_centers
         time_label = "Treatment day"
 
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+    if include_difference_panel:
+        fig, axes = plt.subplots(
+            1, 3, figsize=(20, 5), gridspec_kw={"width_ratios": [1.0, 1.0, 1.1]}
+        )
+        ax_ctrl, ax_treat, ax_diff = axes
+    else:
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+        ax_ctrl, ax_treat = axes
+        ax_diff = None
+
     colors = [plt.cm.tab10(k) for k in range(K)]
 
     for k in range(K):
         valid_c = ctrl_counts > 0
         if valid_c.any():
-            axes[0].plot(
+            ax_ctrl.plot(
                 time_axis[valid_c], ctrl_means[valid_c, k],
                 lw=2, color=colors[k], label=f"Cluster {k+1}",
             )
-            axes[0].fill_between(
+            ax_ctrl.fill_between(
                 time_axis[valid_c],
                 (ctrl_means[valid_c, k] - ctrl_stds[valid_c, k]).clip(0, 1),
                 (ctrl_means[valid_c, k] + ctrl_stds[valid_c, k]).clip(0, 1),
@@ -1209,29 +1248,82 @@ def plot_cluster_probabilities_by_group(
             )
         valid_t = treat_counts > 0
         if valid_t.any():
-            axes[1].plot(
+            ax_treat.plot(
                 time_axis[valid_t], treat_means[valid_t, k],
                 lw=2, color=colors[k], label=f"Cluster {k+1}",
             )
-            axes[1].fill_between(
+            ax_treat.fill_between(
                 time_axis[valid_t],
                 (treat_means[valid_t, k] - treat_stds[valid_t, k]).clip(0, 1),
                 (treat_means[valid_t, k] + treat_stds[valid_t, k]).clip(0, 1),
                 alpha=0.15, color=colors[k],
             )
 
-    axes[0].set_title("Control group")
-    axes[0].set_xlabel(time_label)
-    axes[0].set_ylabel("Cluster probability")
-    axes[0].set_ylim(0, 1)
-    axes[0].legend(fontsize=8)
-    axes[0].grid(alpha=0.3)
+    ax_ctrl.set_title("Control group")
+    ax_ctrl.set_xlabel(time_label)
+    ax_ctrl.set_ylabel("Cluster probability")
+    ax_ctrl.set_ylim(0, 1)
+    ax_ctrl.legend(fontsize=8)
+    ax_ctrl.grid(alpha=0.3)
 
-    axes[1].set_title("Treatment group")
-    axes[1].set_xlabel(time_label)
-    axes[1].set_ylim(0, 1)
-    axes[1].legend(fontsize=8)
-    axes[1].grid(alpha=0.3)
+    ax_treat.set_title("Treatment group")
+    ax_treat.set_xlabel(time_label)
+    ax_treat.set_ylim(0, 1)
+    ax_treat.legend(fontsize=8)
+    ax_treat.grid(alpha=0.3)
+
+    if include_difference_panel and ax_diff is not None:
+        valid_both = (ctrl_counts > 0) & (treat_counts > 0)
+        if valid_both.any():
+            diff_means = treat_means - ctrl_means
+            sep_tv = 0.5 * np.sum(np.abs(diff_means), axis=1)
+            ctrl_dyn = _trajectory_tv_stats(ctrl_means, ctrl_counts)
+            treat_dyn = _trajectory_tv_stats(treat_means, treat_counts)
+
+            for k in range(K):
+                ax_diff.plot(
+                    time_axis[valid_both],
+                    diff_means[valid_both, k],
+                    lw=2,
+                    color=colors[k],
+                    label=f"Δ Cluster {k+1}",
+                )
+
+            ax_diff.plot(
+                time_axis[valid_both],
+                sep_tv[valid_both],
+                lw=2.2,
+                color="black",
+                ls="--",
+                label="TV distance",
+            )
+            if valid_both.sum() >= 2:
+                t_valid = time_axis[valid_both]
+                tv_valid = sep_tv[valid_both]
+                slope = np.polyfit(t_valid, tv_valid, 1)[0]
+                delta = tv_valid[-1] - tv_valid[0]
+                unit = "week" if use_weeks else "day"
+                ax_diff.text(
+                    0.02, 0.95,
+                    (
+                        f"ΔTV={delta:+.3f}\n"
+                        f"Slope={slope:+.3f}/{unit}\n"
+                        f"Ctrl stepTV={ctrl_dyn['mean_step_tv']:.3f}\n"
+                        f"Treat stepTV={treat_dyn['mean_step_tv']:.3f}\n"
+                        f"Treat-Ctrl={treat_dyn['mean_step_tv'] - ctrl_dyn['mean_step_tv']:+.3f}"
+                    ),
+                    transform=ax_diff.transAxes,
+                    va="top",
+                    fontsize=9,
+                    bbox=dict(facecolor="white", edgecolor="0.8", alpha=0.8),
+                )
+        ax_diff.axhline(0.0, color="0.25", lw=1, alpha=0.8)
+        ax_diff.set_title("Treatment - Control")
+        ax_diff.set_xlabel(time_label)
+        ax_diff.set_ylabel("Probability difference")
+        ax_diff.set_ylim(-1, 1)
+        ax_diff.grid(alpha=0.3)
+        ax_diff.legend(fontsize=8, loc="best")
 
     fig.suptitle("Cluster membership probability over time", fontsize=13)
     plt.tight_layout()

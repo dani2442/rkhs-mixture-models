@@ -22,6 +22,7 @@ We compare two direct temporal-weight parameterizations:
 import argparse
 import os
 import sys
+from itertools import product
 from typing import Tuple
 
 import numpy as np
@@ -393,7 +394,81 @@ def project_intraday_to_l2(
 
 
 # ---------------------------------------------------------------------------
-# 5. Experiment runner (same structure as train_l2_2d_temporal_pi.py)
+# 5. Training representation helpers
+# ---------------------------------------------------------------------------
+
+
+def estimate_sigma_median_heuristic(
+    X_time: torch.Tensor,
+    mask: torch.Tensor | None = None,
+    max_points: int = 2000,
+) -> float:
+    """Median heuristic on projected coefficients."""
+    if mask is not None:
+        all_coeffs = torch.cat([X_time[l][mask[l]] for l in range(X_time.shape[0])], dim=0)
+    else:
+        all_coeffs = X_time.reshape(-1, X_time.shape[-1])
+
+    if all_coeffs.shape[0] < 2:
+        return 1.0
+
+    n_sub = min(max_points, all_coeffs.shape[0])
+    idx = torch.randperm(all_coeffs.shape[0], device=all_coeffs.device)[:n_sub]
+    sub = all_coeffs[idx]
+    dists = torch.cdist(sub, sub)
+    positive = dists[dists > 0]
+    if positive.numel() == 0:
+        return 1.0
+    return float(torch.median(positive).item())
+
+
+def build_training_representation(
+    curves: np.ndarray,
+    t_indices: np.ndarray,
+    n_time_bins: int,
+    r_s: int,
+    device: torch.device,
+    dtype: torch.dtype,
+    verbose: bool = True,
+) -> dict:
+    """Build temporal slices + projected coefficients for a given config."""
+    X_time_raw, t_grid, mask, t_min_days, t_max_days = build_temporal_data(
+        curves=curves,
+        t_indices=t_indices,
+        n_time_bins=n_time_bins,
+        device=device,
+        dtype=dtype,
+        verbose=verbose,
+    )
+
+    X_time, space_basis, coeff_mean, coeff_std = project_intraday_to_l2(
+        X_time_raw=X_time_raw,
+        R_s=r_s,
+        device=device,
+        dtype=dtype,
+        mask=mask,
+    )
+    sigma_auto = estimate_sigma_median_heuristic(X_time=X_time, mask=mask)
+
+    return {
+        "X_time_raw": X_time_raw,
+        "X_time": X_time,
+        "t_grid": t_grid,
+        "mask": mask,
+        "t_min_days": t_min_days,
+        "t_max_days": t_max_days,
+        "space_basis": space_basis,
+        "coeff_mean": coeff_mean,
+        "coeff_std": coeff_std,
+        "coeff_dim": int(X_time.shape[-1]),
+        "L_t": int(X_time.shape[0]),
+        "n_samples": int(X_time.shape[1]),
+        "sigma_auto": sigma_auto,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 6. Experiment runner (same structure as train_l2_2d_temporal_pi.py)
 # ---------------------------------------------------------------------------
 
 
@@ -409,6 +484,7 @@ def run_experiment(
     device: torch.device,
     dtype: torch.dtype,
     mask: torch.Tensor | None = None,
+    verbose: bool = True,
 ):
     """Train a TemporalGaussianMixtureModel and return model + history."""
     model = TemporalGaussianMixtureModel(
@@ -427,7 +503,7 @@ def run_experiment(
         num_epochs=num_epochs,
         lr=lr,
         init_method="kmeans++",
-        verbose=True,
+        verbose=verbose,
         log_interval=max(1, num_epochs // 8),
         mask=mask,
     )
@@ -435,14 +511,15 @@ def run_experiment(
     with torch.no_grad():
         pi_t = model.time_weight_model()
 
-    print(f"{name} final MMD²(avg_t): {history[-1]:.6f}")
-    print(f"{name} mean pi over t: {pi_t.mean(dim=0).detach().cpu().numpy()}")
+    if verbose:
+        print(f"{name} final MMD²(avg_t): {history[-1]:.6f}")
+        print(f"{name} mean pi over t: {pi_t.mean(dim=0).detach().cpu().numpy()}")
 
     return model, history, pi_t.detach()
 
 
 # ---------------------------------------------------------------------------
-# 6. Per-patient posterior computation
+# 7. Per-patient posterior computation
 # ---------------------------------------------------------------------------
 
 
@@ -544,13 +621,537 @@ def compute_all_patient_posteriors(
 
 
 # ---------------------------------------------------------------------------
-# 7. Main
+# 8. Group divergence analysis
+# ---------------------------------------------------------------------------
+
+
+def compute_group_divergence_stats(
+    patient_posteriors: dict,
+    patient_time_days: dict,
+    control_ids: list[int],
+    treatment_ids: list[int],
+    n_time_bins: int = 12,
+    clinical_w_divergence: float = 0.70,
+    clinical_w_dynamics: float = 0.30,
+) -> dict:
+    """
+    Compute treatment-vs-control separation from posterior trajectories.
+
+    Separation per time bin is measured by TV distance between group means:
+        TV(t) = 0.5 * || mean_treat(t) - mean_ctrl(t) ||_1
+
+    We also quantify group dynamics:
+      - control should remain stable (small stepwise TV drift),
+      - treatment should change (larger drift / net change).
+
+    Final clinical score (used by search/model selection when requested):
+      clinical_score = w_div * increasing_score + w_dyn * dynamics_score
+                       - dynamics_penalty
+
+    where dynamics_penalty enforces the clinical preference:
+      - treatment should evolve at least as much as control,
+      - control should remain relatively stable.
+    """
+    if not patient_posteriors:
+        return {
+            "increasing_score": -np.inf,
+            "dynamics_score": -np.inf,
+            "clinical_score": -np.inf,
+            "n_valid_bins": 0,
+        }
+
+    control_ids_set = set(control_ids)
+    treatment_ids_set = set(treatment_ids)
+
+    K = next(iter(patient_posteriors.values())).shape[1]
+
+    control_data = []
+    treatment_data = []
+    for pid, posteriors in patient_posteriors.items():
+        days = patient_time_days.get(pid)
+        if days is None:
+            continue
+        for i in range(len(days)):
+            entry = (float(days[i]), posteriors[i])
+            if pid in control_ids_set:
+                control_data.append(entry)
+            elif pid in treatment_ids_set:
+                treatment_data.append(entry)
+
+    if not (control_data and treatment_data):
+        return {
+            "increasing_score": -np.inf,
+            "dynamics_score": -np.inf,
+            "clinical_score": -np.inf,
+            "n_valid_bins": 0,
+        }
+
+    all_days = [d for d, _ in control_data + treatment_data]
+    t_min = min(all_days)
+    t_max = max(all_days)
+    if t_max - t_min < 1e-9:
+        t_max = t_min + 1.0
+
+    bin_edges = np.linspace(t_min, t_max + 1e-9, n_time_bins + 1)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2.0
+
+    def _bin_and_average(data):
+        binned = [[] for _ in range(n_time_bins)]
+        for day, post in data:
+            b = min(
+                int(np.searchsorted(bin_edges, day, side="right")) - 1,
+                n_time_bins - 1,
+            )
+            b = max(0, b)
+            binned[b].append(post)
+        means = np.full((n_time_bins, K), np.nan)
+        counts = np.zeros(n_time_bins, dtype=int)
+        for b in range(n_time_bins):
+            if binned[b]:
+                arr = np.array(binned[b])
+                means[b] = arr.mean(axis=0)
+                counts[b] = len(binned[b])
+        return means, counts
+
+    ctrl_means, ctrl_counts = _bin_and_average(control_data)
+    treat_means, treat_counts = _bin_and_average(treatment_data)
+
+    def _trajectory_tv_stats(means: np.ndarray, counts: np.ndarray) -> dict:
+        valid = np.where(counts > 0)[0]
+        steps = np.full(max(0, n_time_bins - 1), np.nan)
+        if len(valid) >= 2:
+            traj = means[valid].copy()
+            if len(valid) >= 3:
+                traj_smooth = traj.copy()
+                for i in range(len(valid)):
+                    left = max(0, i - 1)
+                    right = min(len(valid), i + 2)
+                    traj_smooth[i] = traj[left:right].mean(axis=0)
+                traj = traj_smooth
+
+            step_vals = []
+            for i in range(len(valid) - 1):
+                left = valid[i]
+                tv_step = 0.5 * np.sum(np.abs(traj[i + 1] - traj[i]))
+                step_vals.append(float(tv_step))
+                steps[left] = float(tv_step)
+            net_tv = float(0.5 * np.sum(np.abs(traj[-1] - traj[0])))
+            return {
+                "valid_idx": valid,
+                "step_tv": steps,
+                "mean_step_tv": float(np.mean(step_vals)),
+                "total_step_tv": float(np.sum(step_vals)),
+                "net_tv": net_tv,
+            }
+        if len(valid) == 1:
+            return {
+                "valid_idx": valid,
+                "step_tv": steps,
+                "mean_step_tv": 0.0,
+                "total_step_tv": 0.0,
+                "net_tv": 0.0,
+            }
+        return {
+            "valid_idx": valid,
+            "step_tv": steps,
+            "mean_step_tv": np.nan,
+            "total_step_tv": np.nan,
+            "net_tv": np.nan,
+        }
+
+    ctrl_traj = _trajectory_tv_stats(ctrl_means, ctrl_counts)
+    treat_traj = _trajectory_tv_stats(treat_means, treat_counts)
+
+    valid_both = (ctrl_counts > 0) & (treat_counts > 0)
+    n_valid_bins = int(valid_both.sum())
+
+    delta = np.full((n_time_bins, K), np.nan)
+    sep_tv = np.full(n_time_bins, np.nan)
+    if n_valid_bins > 0:
+        delta[valid_both] = treat_means[valid_both] - ctrl_means[valid_both]
+        sep_tv[valid_both] = 0.5 * np.sum(np.abs(delta[valid_both]), axis=1)
+
+    valid_idx = np.where(valid_both)[0]
+    if len(valid_idx) >= 2:
+        t_valid = bin_centers[valid_idx]
+        sep_valid = sep_tv[valid_idx]
+        duration = max(float(t_valid[-1] - t_valid[0]), 1e-9)
+        slope_per_day = float(np.polyfit(t_valid, sep_valid, 1)[0])
+        slope_total = slope_per_day * duration
+        start_sep = float(sep_valid[0])
+        final_sep = float(sep_valid[-1])
+        delta_sep = final_sep - start_sep
+        auc_sep = float(np.trapz(sep_valid, t_valid) / duration)
+        monotonic_ratio = float(np.mean(np.diff(sep_valid) >= -1e-10))
+        # Main objective used by the hyperparameter search.
+        increasing_score = 0.45 * final_sep + 0.35 * delta_sep + 0.20 * slope_total
+    elif len(valid_idx) == 1:
+        start_sep = float(sep_tv[valid_idx[0]])
+        final_sep = start_sep
+        delta_sep = 0.0
+        slope_per_day = 0.0
+        slope_total = 0.0
+        auc_sep = start_sep
+        monotonic_ratio = 0.0
+        increasing_score = 0.25 * final_sep
+    else:
+        start_sep = np.nan
+        final_sep = np.nan
+        delta_sep = np.nan
+        slope_per_day = np.nan
+        slope_total = np.nan
+        auc_sep = np.nan
+        monotonic_ratio = np.nan
+        increasing_score = -np.inf
+
+    ctrl_mean_step_tv = ctrl_traj["mean_step_tv"]
+    ctrl_total_step_tv = ctrl_traj["total_step_tv"]
+    ctrl_net_tv = ctrl_traj["net_tv"]
+    treat_mean_step_tv = treat_traj["mean_step_tv"]
+    treat_total_step_tv = treat_traj["total_step_tv"]
+    treat_net_tv = treat_traj["net_tv"]
+
+    if np.isfinite(ctrl_mean_step_tv) and np.isfinite(treat_mean_step_tv):
+        dynamics_contrast = treat_mean_step_tv - ctrl_mean_step_tv
+        dynamics_score = (
+            0.60 * dynamics_contrast
+            + 0.25 * treat_net_tv
+            - 0.15 * ctrl_net_tv
+        )
+    else:
+        dynamics_contrast = np.nan
+        dynamics_score = -np.inf
+
+    if np.isfinite(ctrl_mean_step_tv) and np.isfinite(treat_mean_step_tv):
+        control_step_target = 0.055
+        dynamics_penalty = 0.0
+        if treat_mean_step_tv <= ctrl_mean_step_tv:
+            dynamics_penalty += 0.08
+        dynamics_penalty += 2.0 * max(0.0, ctrl_mean_step_tv - treat_mean_step_tv)
+        dynamics_penalty += 1.2 * max(0.0, ctrl_mean_step_tv - control_step_target)
+    else:
+        dynamics_penalty = 0.0
+
+    w_sum = max(float(clinical_w_divergence + clinical_w_dynamics), 1e-12)
+    w_div = float(clinical_w_divergence) / w_sum
+    w_dyn = float(clinical_w_dynamics) / w_sum
+    if np.isfinite(increasing_score) and np.isfinite(dynamics_score):
+        clinical_score = w_div * increasing_score + w_dyn * dynamics_score - dynamics_penalty
+    elif np.isfinite(increasing_score):
+        clinical_score = increasing_score
+    else:
+        clinical_score = -np.inf
+
+    if len(valid_idx) > 0:
+        final_component_delta = delta[valid_idx[-1]]
+    else:
+        final_component_delta = np.full(K, np.nan)
+
+    return {
+        "bin_centers_days": bin_centers,
+        "ctrl_means": ctrl_means,
+        "treat_means": treat_means,
+        "delta_means": delta,
+        "ctrl_counts": ctrl_counts,
+        "treat_counts": treat_counts,
+        "valid_both": valid_both,
+        "sep_tv": sep_tv,
+        "n_valid_bins": n_valid_bins,
+        "start_sep": start_sep,
+        "final_sep": final_sep,
+        "delta_sep": delta_sep,
+        "slope_per_day": slope_per_day,
+        "slope_total": slope_total,
+        "auc_sep": auc_sep,
+        "monotonic_ratio": monotonic_ratio,
+        "increasing_score": increasing_score,
+        "ctrl_step_tv": ctrl_traj["step_tv"],
+        "treat_step_tv": treat_traj["step_tv"],
+        "ctrl_mean_step_tv": ctrl_mean_step_tv,
+        "ctrl_total_step_tv": ctrl_total_step_tv,
+        "ctrl_net_tv": ctrl_net_tv,
+        "treat_mean_step_tv": treat_mean_step_tv,
+        "treat_total_step_tv": treat_total_step_tv,
+        "treat_net_tv": treat_net_tv,
+        "dynamics_contrast": dynamics_contrast,
+        "dynamics_score": dynamics_score,
+        "dynamics_penalty": dynamics_penalty,
+        "clinical_score": clinical_score,
+        "final_component_delta": final_component_delta,
+    }
+
+
+def print_group_divergence_summary(name: str, stats: dict) -> None:
+    """Human-readable summary of treatment-vs-control separation metrics."""
+    n_valid = int(stats.get("n_valid_bins", 0))
+    divergence_score = stats.get("increasing_score", -np.inf)
+    dynamics_score = stats.get("dynamics_score", -np.inf)
+    clinical_score = stats.get("clinical_score", -np.inf)
+    final_sep = stats.get("final_sep", np.nan)
+    delta_sep = stats.get("delta_sep", np.nan)
+    slope_total = stats.get("slope_total", np.nan)
+    auc_sep = stats.get("auc_sep", np.nan)
+    ctrl_mean_step_tv = stats.get("ctrl_mean_step_tv", np.nan)
+    treat_mean_step_tv = stats.get("treat_mean_step_tv", np.nan)
+    ctrl_net_tv = stats.get("ctrl_net_tv", np.nan)
+    treat_net_tv = stats.get("treat_net_tv", np.nan)
+    dynamics_penalty = stats.get("dynamics_penalty", np.nan)
+    print(
+        f"{name} metrics: "
+        f"clinical={clinical_score:.6f}, divergence={divergence_score:.6f}, "
+        f"dynamics={dynamics_score:.6f}, final_TV={final_sep:.6f}, "
+        f"delta_TV={delta_sep:.6f}, slope_total={slope_total:.6f}, "
+        f"AUC={auc_sep:.6f}, penalty={dynamics_penalty:.6f}, "
+        f"ctrl_stepTV={ctrl_mean_step_tv:.6f}, "
+        f"treat_stepTV={treat_mean_step_tv:.6f}, "
+        f"ctrl_netTV={ctrl_net_tv:.6f}, treat_netTV={treat_net_tv:.6f}, "
+        f"valid_bins={n_valid}"
+    )
+
+
+def parse_int_csv(value: str, default: list[int]) -> list[int]:
+    if not value.strip():
+        return list(default)
+    parsed = [int(v.strip()) for v in value.split(",") if v.strip()]
+    return sorted(set(parsed))
+
+
+def parse_float_csv(value: str, default: list[float]) -> list[float]:
+    if not value.strip():
+        return list(default)
+    parsed = [float(v.strip()) for v in value.split(",") if v.strip()]
+    return sorted(set(parsed))
+
+
+def parse_str_csv(value: str, default: list[str]) -> list[str]:
+    if not value.strip():
+        return list(default)
+    parsed = [v.strip() for v in value.split(",") if v.strip()]
+    return list(dict.fromkeys(parsed))  # preserve order, drop duplicates
+
+
+def build_search_configs(args: argparse.Namespace) -> list[dict]:
+    """Build sampled search configurations from CSV ranges."""
+    model_types = [m for m in parse_str_csv(args.search_models, ["basis", "ode"]) if m in {"basis", "ode"}]
+    n_components_list = parse_int_csv(args.search_components, [args.n_components])
+    r_s_list = parse_int_csv(args.search_r_s, [args.r_s])
+    n_time_bins_list = parse_int_csv(args.search_time_bins, [args.n_time_bins])
+    r_pi_list = parse_int_csv(args.search_r_pi, [args.r_pi])
+    ode_hidden_list = parse_int_csv(args.search_ode_hidden, [args.ode_hidden])
+    lr_list = parse_float_csv(args.search_lrs, [args.lr])
+    sigma_mult_list = parse_float_csv(args.search_sigma_mults, [1.0])
+
+    full_grid = [
+        {
+            "model_type": model_type,
+            "n_components": n_components,
+            "r_s": r_s,
+            "n_time_bins": n_time_bins,
+            "r_pi": r_pi,
+            "ode_hidden": ode_hidden,
+            "lr": lr,
+            "sigma_mult": sigma_mult,
+        }
+        for model_type, n_components, r_s, n_time_bins, r_pi, ode_hidden, lr, sigma_mult in product(
+            model_types,
+            n_components_list,
+            r_s_list,
+            n_time_bins_list,
+            r_pi_list,
+            ode_hidden_list,
+            lr_list,
+            sigma_mult_list,
+        )
+    ]
+    if not full_grid:
+        return []
+
+    rng = np.random.RandomState(args.seed + 11)
+    order = rng.permutation(len(full_grid))
+    n_keep = min(args.search_trials, len(full_grid))
+    return [full_grid[i] for i in order[:n_keep]]
+
+
+def run_hyperparameter_search(
+    curves: np.ndarray,
+    t_indices: np.ndarray,
+    patient_ids: list,
+    window_days: np.ndarray,
+    args: argparse.Namespace,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> tuple[dict | None, list[dict]]:
+    """Search hyperparameters maximizing clinical or divergence objectives."""
+    search_configs = build_search_configs(args)
+    if not search_configs:
+        return None, []
+
+    objective_key = "clinical_score" if args.search_objective == "clinical" else "increasing_score"
+    objective_label = "clinical score" if args.search_objective == "clinical" else "divergence score"
+
+    print(f"\n[Search] Hyperparameter sweep maximizing {objective_label}...")
+    print(f"  Trials requested: {len(search_configs)}")
+    print("  Divergence score = 0.45*final_TV + 0.35*delta_TV + 0.20*slope_total")
+    print("  Dynamics score  = 0.60*(treat_stepTV-ctrl_stepTV) + 0.25*treat_netTV - 0.15*ctrl_netTV")
+    print(
+        "  Clinical score  = "
+        f"{args.clinical_w_divergence:.2f}*divergence + "
+        f"{args.clinical_w_dynamics:.2f}*dynamics - penalty"
+    )
+    print("  Penalty         = 0.08[if treat_stepTV<=ctrl_stepTV]"
+          " + 2.0*max(ctrl_stepTV-treat_stepTV,0) + 1.2*max(ctrl_stepTV-0.055,0)")
+
+    repr_cache: dict[tuple[int, int], dict] = {}
+    results: list[dict] = []
+
+    for trial_idx, cfg in enumerate(search_configs, start=1):
+        key = (cfg["n_time_bins"], cfg["r_s"])
+        if key not in repr_cache:
+            repr_cache[key] = build_training_representation(
+                curves=curves,
+                t_indices=t_indices,
+                n_time_bins=cfg["n_time_bins"],
+                r_s=cfg["r_s"],
+                device=device,
+                dtype=dtype,
+                verbose=False,
+            )
+        rep = repr_cache[key]
+
+        sigma_base = args.sigma if args.sigma > 0 else rep["sigma_auto"]
+        sigma = max(1e-8, sigma_base * cfg["sigma_mult"])
+        kernel = GaussianKernel(sigma=sigma)
+
+        if cfg["model_type"] == "basis":
+            time_basis = L2CosineBasis(
+                T=1.0,
+                R=cfg["r_pi"],
+                grid_size=rep["L_t"],
+                d=1,
+                device=device,
+                dtype=dtype,
+            )
+            time_weight_model = BasisLogitsTimeWeights(
+                basis_matrix=time_basis.Phi,
+                num_components=cfg["n_components"],
+                device=device,
+                dtype=dtype,
+            )
+        else:
+            time_weight_model = NeuralODETimeWeights(
+                t_grid=rep["t_grid"],
+                num_components=cfg["n_components"],
+                hidden_dim=cfg["ode_hidden"],
+                device=device,
+                dtype=dtype,
+            )
+
+        model, history, _ = run_experiment(
+            name=f"Search-{trial_idx:02d}-{cfg['model_type']}",
+            time_weight_model=time_weight_model,
+            X_time=rep["X_time"],
+            kernel=kernel,
+            n_components=cfg["n_components"],
+            coeff_dim=rep["coeff_dim"],
+            num_epochs=args.search_epochs,
+            lr=cfg["lr"],
+            device=device,
+            dtype=dtype,
+            mask=rep["mask"],
+            verbose=False,
+        )
+
+        patient_posteriors, _, patient_time_days = compute_all_patient_posteriors(
+            curves=curves,
+            t_indices=t_indices,
+            patient_ids=patient_ids,
+            window_days=window_days,
+            model=model,
+            space_basis=rep["space_basis"],
+            coeff_mean=rep["coeff_mean"],
+            coeff_std=rep["coeff_std"],
+            t_grid=rep["t_grid"],
+            t_min_days=rep["t_min_days"],
+            t_max_days=rep["t_max_days"],
+            device=device,
+            dtype=dtype,
+        )
+        stats = compute_group_divergence_stats(
+            patient_posteriors=patient_posteriors,
+            patient_time_days=patient_time_days,
+            control_ids=CONTROL_IDS,
+            treatment_ids=TREATMENT_IDS,
+            n_time_bins=args.analysis_time_bins,
+            clinical_w_divergence=args.clinical_w_divergence,
+            clinical_w_dynamics=args.clinical_w_dynamics,
+        )
+
+        result = dict(cfg)
+        result.update(
+            trial=trial_idx,
+            score=float(stats[objective_key]),
+            divergence_score=float(stats["increasing_score"]),
+            dynamics_score=float(stats["dynamics_score"]),
+            clinical_score=float(stats["clinical_score"]),
+            dynamics_penalty=float(stats["dynamics_penalty"]),
+            final_sep=float(stats["final_sep"]) if np.isfinite(stats["final_sep"]) else np.nan,
+            delta_sep=float(stats["delta_sep"]) if np.isfinite(stats["delta_sep"]) else np.nan,
+            ctrl_step_tv=float(stats["ctrl_mean_step_tv"]) if np.isfinite(stats["ctrl_mean_step_tv"]) else np.nan,
+            treat_step_tv=float(stats["treat_mean_step_tv"]) if np.isfinite(stats["treat_mean_step_tv"]) else np.nan,
+            slope_total=float(stats["slope_total"]) if np.isfinite(stats["slope_total"]) else np.nan,
+            mmd=float(history[-1]),
+            sigma=float(sigma),
+            valid_bins=int(stats["n_valid_bins"]),
+        )
+        results.append(result)
+
+        print(
+            f"  Trial {trial_idx:02d}/{len(search_configs)} "
+            f"[{cfg['model_type']}, K={cfg['n_components']}, r_s={cfg['r_s']}, "
+            f"L_t={cfg['n_time_bins']}, r_pi={cfg['r_pi']}, lr={cfg['lr']:.4f}, "
+            f"sigma={sigma:.4f}] -> obj={result['score']:.6f}, "
+            f"div={result['divergence_score']:.6f}, dyn={result['dynamics_score']:.6f}, "
+            f"pen={result['dynamics_penalty']:.6f}, "
+            f"final_TV={result['final_sep']:.6f}, "
+            f"ctrl_stepTV={result['ctrl_step_tv']:.6f}, treat_stepTV={result['treat_step_tv']:.6f}, "
+            f"MMD²={result['mmd']:.6f}"
+        )
+
+    if not results:
+        return None, []
+
+    results_sorted = sorted(
+        results,
+        key=lambda r: (
+            -(r["score"] if np.isfinite(r["score"]) else -np.inf),
+            r["mmd"],
+        ),
+    )
+
+    print(f"\n[Search] Top configurations by {objective_label}:")
+    for rank, r in enumerate(results_sorted[: min(5, len(results_sorted))], start=1):
+        print(
+            f"  {rank}. obj={r['score']:.6f}, clinical={r['clinical_score']:.6f}, "
+            f"div={r['divergence_score']:.6f}, dyn={r['dynamics_score']:.6f}, "
+            f"pen={r['dynamics_penalty']:.6f}, "
+            f"final_TV={r['final_sep']:.6f}, delta_TV={r['delta_sep']:.6f}, "
+            f"MMD²={r['mmd']:.6f}, "
+            f"type={r['model_type']}, K={r['n_components']}, r_s={r['r_s']}, "
+            f"L_t={r['n_time_bins']}, r_pi={r['r_pi']}, "
+            f"ode_hidden={r['ode_hidden']}, lr={r['lr']:.4f}, sigma={r['sigma']:.4f}"
+        )
+
+    return results_sorted[0], results_sorted
+
+
+# ---------------------------------------------------------------------------
+# 9. Main
 # ---------------------------------------------------------------------------
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Glucodensity temporal mixture fitting (Basis vs NeuralODE)."
+        description="Glucodensity temporal mixture fitting + divergence-driven tuning."
     )
     # Data / preprocessing
     p.add_argument(
@@ -576,6 +1177,100 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--lr", type=float, default=0.01)
     p.add_argument("--sigma", type=float, default=0, help="Gaussian kernel bandwidth (0=auto median heuristic)")
 
+    # Divergence analysis / model selection
+    p.add_argument(
+        "--analysis-time-bins",
+        type=int,
+        default=12,
+        help="Time bins for control-vs-treatment posterior analysis.",
+    )
+    p.add_argument(
+        "--selection-metric",
+        choices=["clinical", "divergence", "mmd"],
+        default="clinical",
+        help="Criterion for selecting best model for posteriors/plots.",
+    )
+    p.add_argument(
+        "--clinical-w-divergence",
+        type=float,
+        default=0.70,
+        help="Weight on divergence score inside the clinical objective.",
+    )
+    p.add_argument(
+        "--clinical-w-dynamics",
+        type=float,
+        default=0.30,
+        help="Weight on group-dynamics score inside the clinical objective.",
+    )
+
+    # Hyperparameter search
+    p.add_argument(
+        "--search-trials",
+        type=int,
+        default=0,
+        help="If >0, run random sampled sweep and choose config by search objective.",
+    )
+    p.add_argument(
+        "--search-objective",
+        choices=["clinical", "divergence"],
+        default="clinical",
+        help="Objective optimized by hyperparameter search.",
+    )
+    p.add_argument(
+        "--search-epochs",
+        type=int,
+        default=120,
+        help="Epochs per trial for hyperparameter search.",
+    )
+    p.add_argument(
+        "--search-models",
+        type=str,
+        default="basis,ode",
+        help="Comma-separated model families for search: basis,ode.",
+    )
+    p.add_argument(
+        "--search-components",
+        type=str,
+        default="",
+        help="Comma-separated K values for search (empty uses --n-components).",
+    )
+    p.add_argument(
+        "--search-r-s",
+        type=str,
+        default="",
+        help="Comma-separated intraday basis sizes (empty uses --r-s).",
+    )
+    p.add_argument(
+        "--search-time-bins",
+        type=str,
+        default="",
+        help="Comma-separated temporal bin counts (empty uses --n-time-bins).",
+    )
+    p.add_argument(
+        "--search-r-pi",
+        type=str,
+        default="",
+        help="Comma-separated basis sizes for temporal logits (empty uses --r-pi).",
+    )
+    p.add_argument(
+        "--search-ode-hidden",
+        type=str,
+        default="",
+        help="Comma-separated ODE hidden dims (empty uses --ode-hidden).",
+    )
+    p.add_argument(
+        "--search-lrs",
+        type=str,
+        default="",
+        help="Comma-separated learning rates for search (empty uses --lr).",
+    )
+    p.add_argument(
+        "--search-sigma-mults",
+        type=str,
+        default="0.8,1.0,1.2",
+        help="Multipliers on base sigma (base=auto or --sigma).",
+    )
+
     # Misc
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--no-show", action="store_true")
@@ -594,7 +1289,7 @@ def main() -> None:
     csv_path = os.path.join(project_root, args.data_path)
 
     print("=" * 72)
-    print("Glucodensity Temporal Mixture: Basis vs NeuralODE")
+    print("Glucodensity Temporal Mixture: Divergence-aware analysis")
     print("=" * 72)
 
     # ----- Step 1: Load & preprocess -----
@@ -615,63 +1310,94 @@ def main() -> None:
         verbose=True,
     )
 
-    # ----- Step 3: Bin into temporal slices -----
-    print("\n[Step 3] Binning into temporal slices...")
-    X_time_raw, t_grid, mask, t_min_days, t_max_days = build_temporal_data(
+    selected_cfg = {
+        "n_components": args.n_components,
+        "r_s": args.r_s,
+        "n_time_bins": args.n_time_bins,
+        "r_pi": args.r_pi,
+        "ode_hidden": args.ode_hidden,
+        "lr": args.lr,
+        "sigma_mult": 1.0,
+        "selected_from_search_model_type": "n/a",
+    }
+
+    if args.search_trials > 0:
+        best_search, _ = run_hyperparameter_search(
+            curves=curves,
+            t_indices=t_indices,
+            patient_ids=patient_ids,
+            window_days=window_days,
+            args=args,
+            device=device,
+            dtype=dtype,
+        )
+        if best_search is not None:
+            selected_cfg.update(
+                n_components=best_search["n_components"],
+                r_s=best_search["r_s"],
+                n_time_bins=best_search["n_time_bins"],
+                r_pi=best_search["r_pi"],
+                ode_hidden=best_search["ode_hidden"],
+                lr=best_search["lr"],
+                sigma_mult=best_search["sigma_mult"],
+                selected_from_search_model_type=best_search["model_type"],
+            )
+            print("\n[Search] Selected config for final training:")
+            print(
+                f"  model_type_hint={selected_cfg['selected_from_search_model_type']}, "
+                f"K={selected_cfg['n_components']}, r_s={selected_cfg['r_s']}, "
+                f"L_t={selected_cfg['n_time_bins']}, r_pi={selected_cfg['r_pi']}, "
+                f"ode_hidden={selected_cfg['ode_hidden']}, lr={selected_cfg['lr']:.4f}, "
+                f"sigma_mult={selected_cfg['sigma_mult']:.3f}"
+            )
+
+    # ----- Step 3/4: Build final representation with selected config -----
+    print(
+        f"\n[Step 3] Building final representation with "
+        f"K={selected_cfg['n_components']}, r_s={selected_cfg['r_s']}, "
+        f"L_t={selected_cfg['n_time_bins']}..."
+    )
+    rep = build_training_representation(
         curves=curves,
         t_indices=t_indices,
-        n_time_bins=args.n_time_bins,
+        n_time_bins=selected_cfg["n_time_bins"],
+        r_s=selected_cfg["r_s"],
         device=device,
         dtype=dtype,
         verbose=True,
     )
-
-    # ----- Step 4: Project intraday curves to L² cosine basis -----
-    print("\n[Step 4] Projecting intraday curves to L² cosine basis...")
-    X_time, space_basis, coeff_mean, coeff_std = project_intraday_to_l2(
-        X_time_raw=X_time_raw,
-        R_s=args.r_s,
-        device=device,
-        dtype=dtype,
-        mask=mask,
-    )
-    coeff_dim = X_time.shape[-1]
-    L_t = X_time.shape[0]
-    n_samples = X_time.shape[1]
-
+    X_time = rep["X_time"]
+    t_grid = rep["t_grid"]
+    mask = rep["mask"]
+    space_basis = rep["space_basis"]
+    coeff_mean = rep["coeff_mean"]
+    coeff_std = rep["coeff_std"]
+    t_min_days = rep["t_min_days"]
+    t_max_days = rep["t_max_days"]
+    coeff_dim = rep["coeff_dim"]
+    L_t = rep["L_t"]
+    n_samples = rep["n_samples"]
     print(f"  X_time shape: (L_t={L_t}, n={n_samples}, M_s={coeff_dim})")
 
     # ----- Step 5: Set up kernel and time basis -----
-    # Median heuristic for sigma if set to 0 (auto)
-    sigma = args.sigma
-    if sigma <= 0:
-        # Use only valid (non-padding) coefficients for the heuristic
-        if mask is not None:
-            all_coeffs = torch.cat(
-                [X_time[l][mask[l]] for l in range(L_t)], dim=0
-            )
-        else:
-            all_coeffs = X_time.reshape(-1, coeff_dim)
-        # Subsample for speed
-        n_sub = min(2000, all_coeffs.shape[0])
-        idx = torch.randperm(all_coeffs.shape[0])[:n_sub]
-        sub = all_coeffs[idx]
-        dists = torch.cdist(sub, sub)
-        sigma = float(torch.median(dists[dists > 0]).item())
-        print(f"  Auto sigma (median heuristic): {sigma:.4f}")
-
+    sigma_base = args.sigma if args.sigma > 0 else rep["sigma_auto"]
+    if args.sigma <= 0:
+        print(f"  Auto sigma (median heuristic): {sigma_base:.4f}")
+    sigma = max(1e-8, sigma_base * selected_cfg["sigma_mult"])
+    print(f"  Final sigma: {sigma:.4f}")
     kernel = GaussianKernel(sigma=sigma)
 
     time_basis = L2CosineBasis(
         T=1.0,
-        R=args.r_pi,
+        R=selected_cfg["r_pi"],
         grid_size=L_t,
         d=1,
         device=device,
         dtype=dtype,
     )
 
-    n_components = args.n_components
+    n_components = selected_cfg["n_components"]
+    final_lr = selected_cfg["lr"]
 
     # ----- Step 6: Direct MMD with Basis temporal weights -----
     print(f"\n[Experiment 1] Direct MMD: Basis temporal weights (K={n_components})...")
@@ -689,10 +1415,11 @@ def main() -> None:
         n_components=n_components,
         coeff_dim=coeff_dim,
         num_epochs=args.epochs,
-        lr=args.lr,
+        lr=final_lr,
         device=device,
         dtype=dtype,
         mask=mask,
+        verbose=True,
     )
 
     # ----- Step 7: Direct MMD with NeuralODE temporal weights -----
@@ -700,7 +1427,7 @@ def main() -> None:
     ode_weight_model = NeuralODETimeWeights(
         t_grid=t_grid,
         num_components=n_components,
-        hidden_dim=args.ode_hidden,
+        hidden_dim=selected_cfg["ode_hidden"],
         device=device,
         dtype=dtype,
     )
@@ -712,23 +1439,20 @@ def main() -> None:
         n_components=n_components,
         coeff_dim=coeff_dim,
         num_epochs=args.epochs,
-        lr=args.lr,
+        lr=final_lr,
         device=device,
         dtype=dtype,
         mask=mask,
+        verbose=True,
     )
 
-    # ----- Step 8: Compute per-patient posteriors -----
-    best_model = model_basis if history_basis[-1] <= history_ode[-1] else model_ode
-    best_name = "Basis" if history_basis[-1] <= history_ode[-1] else "NeuralODE"
-
-    print(f"\n[Step 8] Computing per-patient posteriors (using {best_name})...")
-    patient_posteriors, patient_time_norm, patient_time_days = compute_all_patient_posteriors(
+    # ----- Step 8: Analyze group divergence for each model -----
+    patient_posteriors_basis, patient_time_norm_basis, patient_time_days_basis = compute_all_patient_posteriors(
         curves=curves,
         t_indices=t_indices,
         patient_ids=patient_ids,
         window_days=window_days,
-        model=best_model,
+        model=model_basis,
         space_basis=space_basis,
         coeff_mean=coeff_mean,
         coeff_std=coeff_std,
@@ -738,20 +1462,108 @@ def main() -> None:
         device=device,
         dtype=dtype,
     )
+    div_basis = compute_group_divergence_stats(
+        patient_posteriors=patient_posteriors_basis,
+        patient_time_days=patient_time_days_basis,
+        control_ids=CONTROL_IDS,
+        treatment_ids=TREATMENT_IDS,
+        n_time_bins=args.analysis_time_bins,
+        clinical_w_divergence=args.clinical_w_divergence,
+        clinical_w_dynamics=args.clinical_w_dynamics,
+    )
+    print_group_divergence_summary("Direct-Basis", div_basis)
+
+    patient_posteriors_ode, patient_time_norm_ode, patient_time_days_ode = compute_all_patient_posteriors(
+        curves=curves,
+        t_indices=t_indices,
+        patient_ids=patient_ids,
+        window_days=window_days,
+        model=model_ode,
+        space_basis=space_basis,
+        coeff_mean=coeff_mean,
+        coeff_std=coeff_std,
+        t_grid=t_grid,
+        t_min_days=t_min_days,
+        t_max_days=t_max_days,
+        device=device,
+        dtype=dtype,
+    )
+    div_ode = compute_group_divergence_stats(
+        patient_posteriors=patient_posteriors_ode,
+        patient_time_days=patient_time_days_ode,
+        control_ids=CONTROL_IDS,
+        treatment_ids=TREATMENT_IDS,
+        n_time_bins=args.analysis_time_bins,
+        clinical_w_divergence=args.clinical_w_divergence,
+        clinical_w_dynamics=args.clinical_w_dynamics,
+    )
+    print_group_divergence_summary("Direct-NeuralODE", div_ode)
+
+    # ----- Step 9: Choose model for final plots -----
+    if args.selection_metric == "mmd":
+        best_model = model_basis if history_basis[-1] <= history_ode[-1] else model_ode
+        best_name = "Basis" if history_basis[-1] <= history_ode[-1] else "NeuralODE"
+        patient_posteriors = (
+            patient_posteriors_basis if best_name == "Basis" else patient_posteriors_ode
+        )
+        patient_time_norm = (
+            patient_time_norm_basis if best_name == "Basis" else patient_time_norm_ode
+        )
+        patient_time_days = (
+            patient_time_days_basis if best_name == "Basis" else patient_time_days_ode
+        )
+    else:
+        metric_key = "clinical_score" if args.selection_metric == "clinical" else "increasing_score"
+        basis_score = div_basis[metric_key]
+        ode_score = div_ode[metric_key]
+        if basis_score >= ode_score:
+            best_model = model_basis
+            best_name = "Basis"
+            patient_posteriors = patient_posteriors_basis
+            patient_time_norm = patient_time_norm_basis
+            patient_time_days = patient_time_days_basis
+        else:
+            best_model = model_ode
+            best_name = "NeuralODE"
+            patient_posteriors = patient_posteriors_ode
+            patient_time_norm = patient_time_norm_ode
+            patient_time_days = patient_time_days_ode
+
     n_ctrl = sum(1 for pid in patient_posteriors if pid in CONTROL_IDS)
     n_treat = sum(1 for pid in patient_posteriors if pid in TREATMENT_IDS)
+    print(f"\n[Step 9] Using {best_name} for patient trajectory plots "
+          f"(selection metric: {args.selection_metric})")
     print(f"  Patients with posteriors: {len(patient_posteriors)} "
           f"(control: {n_ctrl}, treatment: {n_treat})")
 
-    # ----- Step 9: Summary -----
+    # ----- Step 10: Summary -----
     print("\n" + "=" * 72)
     print("Final comparison")
     print("=" * 72)
     print(f"  Direct-Basis    MMD²(avg_t): {history_basis[-1]:.6f}")
     print(f"  Direct-NeuralODE MMD²(avg_t): {history_ode[-1]:.6f}")
     print(f"  Improvement (Basis→ODE): {history_basis[-1] - history_ode[-1]:.6f}")
+    print(
+        f"  Direct-Basis scores: clinical={div_basis['clinical_score']:.6f}, "
+        f"divergence={div_basis['increasing_score']:.6f}, dynamics={div_basis['dynamics_score']:.6f}, "
+        f"penalty={div_basis['dynamics_penalty']:.6f}"
+    )
+    print(
+        f"  Direct-NeuralODE scores: clinical={div_ode['clinical_score']:.6f}, "
+        f"divergence={div_ode['increasing_score']:.6f}, dynamics={div_ode['dynamics_score']:.6f}, "
+        f"penalty={div_ode['dynamics_penalty']:.6f}"
+    )
+    print(
+        f"  Mean step TV (control vs treatment): "
+        f"Basis=({div_basis['ctrl_mean_step_tv']:.6f}, {div_basis['treat_mean_step_tv']:.6f}), "
+        f"ODE=({div_ode['ctrl_mean_step_tv']:.6f}, {div_ode['treat_mean_step_tv']:.6f})"
+    )
+    print(
+        f"  Selected model ({args.selection_metric}): {best_name} | "
+        f"Basis final_TV={div_basis['final_sep']:.6f}, ODE final_TV={div_ode['final_sep']:.6f}"
+    )
 
-    # ----- Step 10: Visualization -----
+    # ----- Step 11: Visualization -----
     out_dir = os.path.join(project_root, "paper", "images")
 
     # Prepare numpy arrays for visualization
@@ -800,11 +1612,12 @@ def main() -> None:
         patient_time_days=patient_time_days,
         control_ids=CONTROL_IDS,
         treatment_ids=TREATMENT_IDS,
+        n_time_bins=args.analysis_time_bins,
         out_dir=out_dir,
         show=not args.no_show,
     )
 
-    if args.n_components == 3:
+    if n_components == 3:
         # plot_ternary_simplex_evolution(
         #     patient_posteriors=patient_posteriors,
         #     patient_time_norm=patient_time_norm,
