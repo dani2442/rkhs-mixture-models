@@ -7,6 +7,7 @@ from .graph import GraphBasis, GraphLaplacianBasis
 from .so3 import SO3Basis, SO3FourierBasis
 from .Rn import CanonicalBasis, DiscreteCosineBasis
 from .graph_embedding import WLHashFingerprint
+from .symmetric import SymmetricMatrixBasis
 
 __all__ = [
     "HilbertBasis",
@@ -21,4 +22,5 @@ __all__ = [
     "CanonicalBasis",
     "DiscreteCosineBasis",
     "WLHashFingerprint",
+    "SymmetricMatrixBasis",
 ]
