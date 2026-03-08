@@ -17,6 +17,7 @@ from src.spaces.L2 import L2Basis, L2CosineBasis, L2FourierBasis, L2TensorBasis2
 from src.spaces.graph import GraphBasis, GraphLaplacianBasis
 from src.spaces.graph_embedding import WLHashFingerprint
 from src.spaces.Rn import CanonicalBasis, DiscreteCosineBasis
+from src.spaces.symmetric import SymmetricMatrixBasis
 from src.spaces.so3 import SO3Basis, SO3FourierBasis
 from src.mixture import GaussianMixtureModel, fit_gaussian_mixture_mmd
 from src.data import (
