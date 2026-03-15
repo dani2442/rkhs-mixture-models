@@ -133,7 +133,7 @@ def generate_l2_gaussian_data(
                 
                 # Add component-specific offsets and sign flips
                 sign = 1 if (k + dim) % 3 != 0 else -1
-                true_mean_coeffs[k, base_idx + r] = sign * amplitude * np.cos(phase_shift + r * np.pi / (k + 2))
+                true_mean_coeffs[k, base_idx + r] = 0.35 * sign * amplitude * np.cos(phase_shift + r * np.pi / (k + 2))
     
     # =========================================
     # Define distinct covariance structures for each component
@@ -286,6 +286,38 @@ def plot_variance_by_component(
     fig.suptitle("Variance Profiles: True vs Predicted", fontsize=14)
     plt.tight_layout()
     return fig
+
+
+def generate_n_datasets(
+    n_datasets: int,
+    n_samples: int,
+    n_components: int,
+    grid_size: int,
+    R: int,
+    T: float = 1.0,
+    d: int = 2,
+    component_weights: torch.Tensor = None,
+    base_seed: int = 42,
+    device: torch.device = torch.device("cpu"),
+    dtype: torch.dtype = torch.float64,
+):
+    datasets = []
+    for i in range(n_datasets):
+        seed = base_seed + i if base_seed is not None else None
+        dataset = generate_l2_gaussian_data(
+            n_samples=n_samples,
+            n_components=n_components,
+            grid_size=grid_size,
+            R=R,
+            T=T,
+            d=d,
+            component_weights=component_weights,
+            seed=seed,
+            device=device,
+            dtype=dtype,
+        )
+        datasets.append(dataset)
+    return datasets
 
 
 def main():
