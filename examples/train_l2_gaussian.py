@@ -133,7 +133,7 @@ def generate_l2_gaussian_data(
                 
                 # Add component-specific offsets and sign flips
                 sign = 1 if (k + dim) % 3 != 0 else -1
-                true_mean_coeffs[k, base_idx + r] = sign * amplitude * np.cos(phase_shift + r * np.pi / (k + 2))
+                true_mean_coeffs[k, base_idx + r] = 0.15 * sign * amplitude * np.cos(phase_shift + r * np.pi / (k + 2))
     
     # =========================================
     # Define distinct covariance structures for each component
@@ -205,6 +205,62 @@ def generate_l2_gaussian_data(
     }
     
     return X_raw, X_coeffs, assignments, info
+
+
+def generate_n_datasets(
+    n_datasets: int,
+    n_samples: int,
+    n_components: int,
+    grid_size: int,
+    R: int,
+    T: float = 1.0,
+    d: int = 2,
+    component_weights: torch.Tensor = None,
+    base_seed: int = 42,
+    device: torch.device = torch.device("cpu"),
+    dtype: torch.dtype = torch.float64,
+):
+    """
+    Generate n datasets of L² functional data from true Gaussian distributions.
+    
+    Args:
+        n_datasets: Number of datasets to generate
+        n_samples: Number of samples per dataset
+        n_components: Number of mixture components
+        grid_size: Number of time discretization points
+        R: Number of basis functions per dimension
+        T: End of time interval [0, T]
+        d: Spatial dimension (R^d valued functions)
+        component_weights: Mixture weights, shape (n_components,)
+        base_seed: Base random seed for reproducibility (each dataset uses base_seed + i)
+        device: Torch device
+        dtype: Torch dtype
+    
+    Returns:
+        List of tuples (X_raw, X_coeffs, assignments, info) for each dataset.
+    """
+    datasets = []
+    for i in range(n_datasets):
+        seed = base_seed + i if base_seed is not None else None
+        
+        # We need a new set of weights for each call if not provided, 
+        # or we pass the provided ones down.
+        dataset = generate_l2_gaussian_data(
+            n_samples=n_samples,
+            n_components=n_components,
+            grid_size=grid_size,
+            R=R,
+            T=T,
+            d=d,
+            component_weights=component_weights,
+            seed=seed,
+            device=device,
+            dtype=dtype,
+        )
+        datasets.append(dataset)
+        
+    return datasets
+
 
 
 def plot_variance_comparison(

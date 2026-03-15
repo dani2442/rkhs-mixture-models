@@ -200,8 +200,9 @@ def _prepare_fda_input(X: torch.Tensor, basis=None):
             functions = basis.reconstruct(X)
             func_np = to_numpy(functions)
         
-        # Assume uniform grid
-        grid_points = np.linspace(0, 1, func_np.shape[-1])
+        # func_np has shape (n_samples, grid_size, d)
+        n_samples, grid_size, d = func_np.shape
+        grid_points = np.linspace(0, 1, grid_size)
         return skfda.FDataGrid(data_matrix=func_np, grid_points=grid_points)
     else:
         # If no basis is provided or reconstructed isn't possible,
