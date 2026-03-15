@@ -53,7 +53,7 @@ def main():
     sigma_kernel = 1.2
 
     # Training parameters
-    num_epochs = 200
+    num_epochs = 500
     lr = 0.1
     
     device = torch.device("cpu")
