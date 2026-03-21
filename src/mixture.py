@@ -239,7 +239,6 @@ class GaussianMixtureModel(nn.Module):
         """
         pi = self.pi
         m = self.mean
-        Kcov = self.covariance
 
         # Constant term (data-data)
         if compute_const_term:
@@ -248,12 +247,20 @@ class GaussianMixtureModel(nn.Module):
         else:
             const = torch.tensor(0.0, device=self.device, dtype=self.dtype)
 
-        # Cross term (data-mixture)
-        J = kernel.compute_J(X, m, Kcov)  # (n, K)
-        Jbar = J.mean(dim=0)  # (K,)
+        # Use the cheaper diagonal/spherical formulas when available.
+        if (
+            isinstance(kernel, GaussianKernel)
+            and self.covariance_type in {"diagonal", "spherical"}
+        ):
+            variances = self.variance
+            J = kernel.compute_J_diag(X, m, variances)  # (n, K)
+            I = kernel.compute_I_diag(m, variances)  # (K, K)
+        else:
+            Kcov = self.covariance
+            J = kernel.compute_J(X, m, Kcov)  # (n, K)
+            I = kernel.compute_I(m, Kcov)  # (K, K)
 
-        # Mixture-mixture term
-        I = kernel.compute_I(m, Kcov)  # (K, K)
+        Jbar = J.mean(dim=0)  # (K,)
 
         cross = (pi * Jbar).sum()
         mixmix = pi @ I @ pi
@@ -444,6 +451,26 @@ class GaussianMixtureModel(nn.Module):
         log_gamma = log_weighted - log_sum  # (n, K)
 
         return torch.exp(log_gamma)
+
+    def kernel_responsibilities(self, X: torch.Tensor, kernel: Kernel) -> torch.Tensor:
+        """
+        Compute soft assignments from the MMD cross-term contributions.
+
+        For each sample x_i and component k, the unnormalized score is
+        π_k E_{y~N(m_k, K_k)}[κ(x_i, y)], which is exactly the per-component
+        contribution used by the MMD objective.
+        """
+        if (
+            isinstance(kernel, GaussianKernel)
+            and self.covariance_type in {"diagonal", "spherical"}
+        ):
+            J = kernel.compute_J_diag(X, self.mean, self.variance)
+        else:
+            J = kernel.compute_J(X, self.mean, self.covariance)
+
+        scores = J * self.pi.unsqueeze(0)
+        denom = scores.sum(dim=1, keepdim=True).clamp_min(1e-12)
+        return scores / denom
 
     def log_likelihood(self, X: torch.Tensor) -> torch.Tensor:
         """

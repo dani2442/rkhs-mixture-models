@@ -482,52 +482,52 @@ def generate_so3_mixture_data(
     """
     if seed is not None:
         torch.manual_seed(seed)
+        rng = np.random.default_rng(seed)
+    else:
+        rng = np.random.default_rng()
 
     # Default uniform weights
     if component_weights is None:
         component_weights = torch.ones(n_components, device=device, dtype=dtype) / n_components
+
+    # Sample mean rotations uniformly on SO(3) using the seed.
+    # For Haar-uniform sampling: α ~ U[0, 2π), β ~ arccos(1 - 2u) for u ~ U[0,1], γ ~ U[0, 2π).
+    alpha_means = rng.uniform(0, 2 * math.pi, size=n_components)
+    u = rng.uniform(0, 1, size=n_components)
+    beta_means = np.arccos(np.clip(1.0 - 2.0 * u, -1.0, 1.0))
+    gamma_means = rng.uniform(0, 2 * math.pi, size=n_components)
+    mean_rotations = torch.tensor(
+        np.stack([alpha_means, beta_means, gamma_means], axis=1),
+        device=device,
+        dtype=dtype,
+    )  # (n_components, 3)
 
     # Sample component assignments
     assignments = torch.multinomial(
         component_weights.expand(n_samples, -1), num_samples=1
     ).squeeze(-1)
 
-    # Generate distinct mean rotations for each component
-    # Spread them roughly uniformly on SO(3)
-    mean_rotations = []
-    for k in range(n_components):
-        # Create well-separated mean rotations
-        alpha_mean = 2 * math.pi * k / n_components
-        beta_mean = math.pi * (0.3 + 0.4 * (k % 2))  # Alternate between different β values
-        gamma_mean = math.pi * (k + 0.5) / n_components
-        mean_rotations.append(torch.tensor([alpha_mean, beta_mean, gamma_mean], device=device, dtype=dtype))
-    
-    mean_rotations = torch.stack(mean_rotations)  # (n_components, 3)
-
-    # Generate samples with noise around the mean rotations
+    # Generate samples with noise around the mean rotations.
+    # noise_std = 1 / sqrt(noise_concentration) in radians.
+    noise_std = 1.0 / math.sqrt(noise_concentration)
     X = torch.zeros(n_samples, 3, device=device, dtype=dtype)
-    
+
     for i in range(n_samples):
         k = assignments[i].item()
         mean = mean_rotations[k]
-        
-        # Add concentrated noise to each Euler angle
-        # Using wrapped normal distribution approximation
-        noise_std = 1.0 / math.sqrt(noise_concentration)
+
         noise = noise_std * torch.randn(3, device=device, dtype=dtype)
-        
         euler = mean + noise
-        
-        # Wrap angles to proper ranges
-        # α ∈ [0, 2π), γ ∈ [0, 2π)
+
+        # Wrap α, γ ∈ [0, 2π)
         euler[0] = euler[0] % (2 * math.pi)
         euler[2] = euler[2] % (2 * math.pi)
-        
-        # β ∈ [0, π] - reflect if out of bounds
+
+        # Reflect β back into [0, π]
         euler[1] = euler[1].abs()
         if euler[1] > math.pi:
             euler[1] = 2 * math.pi - euler[1]
-        
+
         X[i] = euler
 
     info = {

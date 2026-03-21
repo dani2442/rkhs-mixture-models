@@ -1,0 +1,330 @@
+"""
+Static metadata for benchmark methods and columns.
+
+METHOD_REGISTRY defines each clustering method's applicable spaces,
+computational complexity, benchmark participation, and citation metadata.
+
+BENCHMARK_COLUMNS defines the dataset columns in the unified table.
+"""
+
+from collections import OrderedDict
+
+# ──────────────────────────────────────────────────────────────────────
+# Method registry: order here determines row order in the LaTeX table
+# ──────────────────────────────────────────────────────────────────────
+
+METHOD_REGISTRY = OrderedDict(
+    {
+        # --- Our methods ---
+        "MMD GMM (Gaussian)": {
+            "space": "Hilbert",
+            "train": r"$O(nK)$",
+            "infer": r"$O(nK)$",
+            "memory": r"$O(nK)$",
+            "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
+            "citation_key": None,
+            "citation_title": "Random Objects in Hilbert Spaces via Kernel Mixture Gaussian Model",
+            "citation_doi": None,
+        },
+        "MMD GMM (Polynomial)": {
+            "space": "Hilbert",
+            "train": r"$O(nK)$",
+            "infer": r"$O(nK)$",
+            "memory": r"$O(nK)$",
+            "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
+            "citation_key": None,
+            "citation_title": "Random Objects in Hilbert Spaces via Kernel Mixture Gaussian Model",
+            "citation_doi": None,
+        },
+        # --- Metric-space competitors ---
+        "K-Medoids": {
+            "space": "Metric",
+            "train": r"$O(n^2 K)$",
+            "infer": r"$O(nK)$",
+            "memory": r"$O(n^2)$",
+            "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
+            "citation_key": "kaufmanFindingGroupsData1990",
+            "citation_title": "Partitioning Around Medoids (Program PAM)",
+            "citation_doi": "10.1002/9780470316801.ch2",
+        },
+        "Hierarchical (Avg)": {
+            "space": "Metric",
+            "train": r"$O(n^2 \log n)$",
+            "infer": "---",
+            "memory": r"$O(n^2)$",
+            "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
+            "citation_key": "lanceGeneralTheoryClassificatory1967",
+            "citation_title": "A General Theory of Classificatory Sorting Strategies: 1. Hierarchical Systems",
+            "citation_doi": "10.1093/comjnl/9.4.373",
+        },
+        "DBSCAN": {
+            "space": "Metric",
+            "train": r"$O(n^2)$",
+            "infer": "---",
+            "memory": r"$O(n^2)$",
+            "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
+            "citation_key": "esterDensitybasedAlgorithmDiscovering1996",
+            "citation_title": "A Density-Based Algorithm for Discovering Clusters in Large Spatial Databases with Noise",
+            "citation_doi": "10.5555/3001460.3001507",
+        },
+        "HDBSCAN": {
+            "space": "Metric",
+            "train": r"$O(n^2)$",
+            "infer": "---",
+            "memory": r"$O(n^2)$",
+            "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
+            "citation_key": "campelloHierarchicalDensityEstimates2015",
+            "citation_title": "Hierarchical Density Estimates for Data Clustering, Visualization, and Outlier Detection",
+            "citation_doi": "10.1145/2733381",
+        },
+        "K-Center": {
+            "space": "Metric",
+            "train": r"$O(nK)$",
+            "infer": r"$O(nK)$",
+            "memory": r"$O(n)$",
+            "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
+            "citation_key": "gonzalezClusteringMinimizeMaximum1985",
+            "citation_title": "Clustering to Minimize the Maximum Intercluster Distance",
+            "citation_doi": "10.1016/0304-3975(85)90224-5",
+        },
+        # --- FDA methods (functional data only) ---
+        "FDA K-Means": {
+            "space": r"$L^2$",
+            "train": r"$O(nK)$",
+            "infer": r"$O(nK)$",
+            "memory": r"$O(nK)$",
+            "benchmarks": ["l2", "l2_real", "glucodensity", "skeleton"],
+            "citation_key": "luzlopezgarciaKmeansAlgorithmsFunctional2015",
+            "citation_title": "K-means Algorithms for Functional Data",
+            "citation_doi": "10.1016/j.neucom.2014.09.048",
+        },
+        "FDA Fuzzy C-Means": {
+            "space": r"$L^2$",
+            "train": r"$O(nK)$",
+            "infer": r"$O(nK)$",
+            "memory": r"$O(nK)$",
+            "benchmarks": ["l2", "l2_real", "glucodensity", "skeleton"],
+            "citation_key": "bezdekPatternRecognitionFuzzy1981",
+            "citation_title": "Pattern Recognition with Fuzzy Objective Function Algorithms",
+            "citation_doi": "10.1007/978-1-4757-0450-1",
+        },
+        "FDA Agglomerative": {
+            "space": r"$L^2$",
+            "train": r"$O(n^2 \log n)$",
+            "infer": "---",
+            "memory": r"$O(n^2)$",
+            "benchmarks": ["l2", "l2_real", "glucodensity", "skeleton"],
+            "citation_key": "ferreiraComparisonHierarchicalMethods2009",
+            "citation_title": "A Comparison of Hierarchical Methods for Clustering Functional Data",
+            "citation_doi": "10.1080/03610910903168603",
+        },
+        "Funclust": {
+            "space": r"$L^2$",
+            "train": r"$O(nK)$",
+            "infer": r"$O(nK)$",
+            "memory": r"$O(nK)$",
+            "benchmarks": ["l2", "l2_real", "glucodensity", "skeleton"],
+            "citation_key": "jacquesFunclustCurvesClustering2013",
+            "citation_title": "Funclust: A Curves Clustering Method Using Functional Random Variables Density Approximation",
+            "citation_doi": "10.1016/j.neucom.2012.11.042",
+        },
+        "FunHDDC": {
+            "space": r"$L^2$",
+            "train": r"$O(nK)$",
+            "infer": r"$O(nK)$",
+            "memory": r"$O(nK)$",
+            "benchmarks": ["l2", "l2_real", "glucodensity", "skeleton"],
+            "citation_key": "bouveyronModelbasedClusteringTime2011",
+            "citation_title": "Model-Based Clustering of Time Series in Group-Specific Functional Subspaces",
+            "citation_doi": "10.1007/s11634-011-0095-6",
+        },
+        "fclust": {
+            "space": r"$L^2$",
+            "train": r"$O(nK)$",
+            "infer": r"$O(nK)$",
+            "memory": r"$O(nK)$",
+            "benchmarks": ["l2", "l2_real", "glucodensity", "skeleton"],
+            "citation_key": "jamesClusteringSparselySampled2003",
+            "citation_title": "Clustering for Sparsely Sampled Functional Data",
+            "citation_doi": "10.1198/016214503000189",
+        },
+        "K-Centres": {
+            "space": r"$L^2$",
+            "train": r"$O(nK)$",
+            "infer": r"$O(nK)$",
+            "memory": r"$O(nK)$",
+            "benchmarks": ["l2", "l2_real", "glucodensity", "skeleton"],
+            "citation_key": "chiouFunctionalClusteringIdentifying2007",
+            "citation_title": "Functional Clustering and Identifying Substructures of Longitudinal Data",
+            "citation_doi": "10.1111/j.1467-9868.2007.00605.x",
+        },
+        "Curvclust": {
+            "space": r"$L^2$",
+            "train": r"$O(nK)$",
+            "infer": r"$O(nK)$",
+            "memory": r"$O(nK)$",
+            "benchmarks": ["l2", "l2_real", "glucodensity", "skeleton"],
+            "citation_key": "giacofciWaveletBasedClusteringMixedEffects2013",
+            "citation_title": "Wavelet-Based Clustering for Mixed-Effects Functional Models in High Dimension",
+            "citation_doi": "10.1111/j.1541-0420.2012.01828.x",
+        },
+        # --- Feature-based competitors on projected coefficients/embeddings ---
+        # "Feature K-Means": {
+        #     "space": "Feature",
+        #     "train": r"$O(nK)$",
+        #     "infer": r"$O(nK)$",
+        #     "memory": r"$O(nK)$",
+        #     "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
+        #     "citation_title": "Some Methods of Classification and Analysis of Multivariate Observations",
+        #     "citation_doi": None,
+        # },
+        # "Feature GMM": {
+        #     "space": "Feature",
+        #     "train": r"$O(nK)$",
+        #     "infer": r"$O(nK)$",
+        #     "memory": r"$O(nK)$",
+        #     "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
+        #     "citation_title": "Model-Based Clustering, Discriminant Analysis, and Density Estimation",
+        #     "citation_doi": "10.1198/016214502760047131",
+        # },
+        # "Feature HDDC": {
+        #     "space": "Feature",
+        #     "train": r"$O(nK)$",
+        #     "infer": r"$O(nK)$",
+        #     "memory": r"$O(nK)$",
+        #     "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
+        #     "citation_title": "High-Dimensional Data Clustering",
+        #     "citation_doi": "10.1016/j.csda.2007.02.009",
+        # },
+        # "Mixt-PPCA": {
+        #     "space": "Feature",
+        #     "train": r"$O(nK)$",
+        #     "infer": r"$O(nK)$",
+        #     "memory": r"$O(nK)$",
+        #     "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
+        #     "citation_title": "Mixtures of Probabilistic Principal Component Analysers",
+        #     "citation_doi": "10.1162/089976699300016728",
+        # },
+        # --- sklearn R^d only ---
+        "MiniBatch KMeans": {
+            "space": r"$\mathbb{R}^n$",
+            "train": r"$O(nK)$",
+            "infer": r"$O(nK)$",
+            "memory": r"$O(n)$",
+            "benchmarks": ["rd"],
+            "citation_key": "sculleyWebscaleKmeansClustering2010",
+            "citation_title": "Web-Scale K-Means Clustering",
+            "citation_doi": "10.1145/1772690.1772862",
+        },
+        "Spectral": {
+            "space": r"$\mathbb{R}^n$",
+            "train": r"$O(n^3)$",
+            "infer": "---",
+            "memory": r"$O(n^2)$",
+            "benchmarks": ["rd"],
+            "citation_key": "ngSpectralClusteringAnalysis2001",
+            "citation_title": "On Spectral Clustering: Analysis and an Algorithm",
+            "citation_doi": "10.5555/2980539.2980649",
+        },
+        "Ward": {
+            "space": r"$\mathbb{R}^n$",
+            "train": r"$O(n^2)$",
+            "infer": "---",
+            "memory": r"$O(n^2)$",
+            "benchmarks": ["rd"],
+            "citation_key": "wardHierarchicalGroupingOptimize1963",
+            "citation_title": "Hierarchical Grouping to Optimize an Objective Function",
+            "citation_doi": "10.1080/01621459.1963.10500845",
+        },
+        "Agglomerative (Avg)": {
+            "space": r"$\mathbb{R}^n$",
+            "train": r"$O(n^2)$",
+            "infer": "---",
+            "memory": r"$O(n^2)$",
+            "benchmarks": ["rd"],
+            "citation_key": "lanceGeneralTheoryClassificatory1967",
+            "citation_title": "A General Theory of Classificatory Sorting Strategies: 1. Hierarchical Systems",
+            "citation_doi": "10.1093/comjnl/9.4.373",
+        },
+        "BIRCH": {
+            "space": r"$\mathbb{R}^n$",
+            "train": r"$O(n)$",
+            "infer": r"$O(nK)$",
+            "memory": r"$O(n)$",
+            "benchmarks": ["rd"],
+            "citation_key": "zhangBIRCHEfficientData1996",
+            "citation_title": "BIRCH: An Efficient Data Clustering Method for Very Large Databases",
+            "citation_doi": "10.1145/235968.233324",
+        },
+        "Gaussian Mixture (EM)": {
+            "space": r"$\mathbb{R}^n$",
+            "train": r"$O(nK)$",
+            "infer": r"$O(nK)$",
+            "memory": r"$O(nK)$",
+            "benchmarks": ["rd"],
+            "citation_key": "fraleyModelBasedClusteringDiscriminant2002",
+            "citation_title": "Model-Based Clustering, Discriminant Analysis, and Density Estimation",
+            "citation_doi": "10.1198/016214502760047131",
+        },
+        "Affinity Propagation": {
+            "space": r"$\mathbb{R}^n$",
+            "train": r"$O(n^2)$",
+            "infer": "---",
+            "memory": r"$O(n^2)$",
+            "benchmarks": ["rd"],
+            "citation_key": "freyClusteringPassingMessages2007",
+            "citation_title": "Clustering by Passing Messages Between Data Points",
+            "citation_doi": "10.1126/science.1136800",
+        },
+        "MeanShift": {
+            "space": r"$\mathbb{R}^n$",
+            "train": r"$O(n^2)$",
+            "infer": r"$O(n)$",
+            "memory": r"$O(n)$",
+            "benchmarks": ["rd"],
+            "citation_key": "yizongchengMeanShiftMode1995",
+            "citation_title": "Mean Shift, Mode Seeking, and Clustering",
+            "citation_doi": "10.1109/34.400568",
+        },
+        "OPTICS": {
+            "space": r"$\mathbb{R}^n$",
+            "train": r"$O(n^2)$",
+            "infer": "---",
+            "memory": r"$O(n)$",
+            "benchmarks": ["rd"],
+            "citation_key": "ankerstOPTICSOrderingPoints1999",
+            "citation_title": "OPTICS: Ordering Points to Identify the Clustering Structure",
+            "citation_doi": "10.1145/304182.304187",
+        },
+    }
+)
+
+# ──────────────────────────────────────────────────────────────────────
+# Benchmark columns: order here determines column order in the table
+# ──────────────────────────────────────────────────────────────────────
+
+BENCHMARK_COLUMNS = OrderedDict(
+    {
+        "rd": {
+            "header": r"$\mathbb{R}^d$",
+        },
+        # "l2": {
+        #     "header": r"$L^2$ Synth.",
+        # },
+        "l2_real": {
+            "header": r"$L^2$",
+        },
+        "glucodensity": {
+            "header": "Gluco.",
+        },
+        # "skeleton": {
+        #     "header": "Skeleton",
+        # },
+        "so3": {
+            "header": r"$\mathrm{SO}(3)$",
+        },
+        "graph": {
+            "header": "Molecular",
+        },
+    }
+)
