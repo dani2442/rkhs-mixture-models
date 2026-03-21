@@ -12,6 +12,7 @@ import sys
 
 import numpy as np
 import torch
+from scipy.spatial.distance import pdist, squareform
 from sklearn.metrics import adjusted_rand_score
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -37,9 +38,9 @@ from benchmarks.runner import save_benchmark_results
 # ──────────────────────────────────────────────────────────────────────
 N_SAMPLES = 200
 N_COMPONENTS = 3
-NOISE_CONCENTRATION = 30.0
+NOISE_CONCENTRATION = 8.0   # noise_std ≈ 0.35 rad — creates genuine cluster overlap
 L_MAX = 3
-SIGMA_KERNEL = 2.0
+# Sigma is computed per-dataset via the median heuristic (see main loop)
 NUM_EPOCHS = 400
 LR = 0.1
 SEED = 42
@@ -110,9 +111,13 @@ def main():
         )
         X = basis.project(X_euler)
 
+        # Adaptive kernel bandwidth: median pairwise Euclidean distance (median heuristic)
+        from scipy.spatial.distance import pdist
+        sigma = float(np.median(pdist(X.cpu().numpy(), metric="euclidean")))
+
         # MMD GMM (Gaussian)
         torch.manual_seed(ds_seed)
-        kernel_g = GaussianKernel(sigma=SIGMA_KERNEL)
+        kernel_g = GaussianKernel(sigma=sigma)
         labels = _train_mmd_gmm(X, basis, N_COMPONENTS, kernel_g, NUM_EPOCHS, LR)
         ari = adjusted_rand_score(true_labels, labels)
         ari_results["MMD GMM (Gaussian)"].append(ari)
@@ -127,8 +132,6 @@ def main():
         print(f"  MMD GMM (Polynomial)  ARI={ari:.4f}")
 
         # Competitors
-        from scipy.spatial.distance import pdist, squareform
-
         X_np = X.cpu().numpy()
         dist_matrix = squareform(pdist(X_np, metric="euclidean"))
 
@@ -196,7 +199,7 @@ def main():
             "n_components": N_COMPONENTS,
             "noise_concentration": NOISE_CONCENTRATION,
             "L_max": L_MAX,
-            "sigma_kernel": SIGMA_KERNEL,
+            "sigma_kernel": "adaptive_median",
             "num_epochs": NUM_EPOCHS,
             "lr": LR,
             "n_datasets": N_DATASETS,

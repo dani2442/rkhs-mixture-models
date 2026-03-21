@@ -166,7 +166,7 @@ def main():
 
         algorithms.extend([
             ("K-Medoids", KMedoidsClustering(n_clusters=n_cl)),
-            ("Hierarchical (Avg) [dup]", None),  # skip — already have Agglomerative (Avg)
+            ("Hierarchical (Avg)", HierarchicalClustering(n_clusters=n_cl, linkage="average")),
             ("K-Center", KCenterClustering(n_clusters=n_cl)),
         ])
 
@@ -177,9 +177,6 @@ def main():
         ])
 
         for alg_name, alg in algorithms:
-            if alg_name == "Hierarchical (Avg) [dup]":
-                continue  # Agglomerative (Avg) already covers this
-
             try:
                 if alg_name == "MMD GMM (Polynomial)":
                     y_pred = _run_mmd(X, n_cl, "polynomial")
@@ -187,6 +184,10 @@ def main():
                     y_pred = _run_mmd(X, n_cl, "gaussian")
                 elif alg_name == "K-Medoids":
                     y_pred = KMedoidsClustering(n_clusters=n_cl).fit_predict(
+                        torch.as_tensor(X, dtype=torch.float64), dist_matrix=dist_matrix
+                    )
+                elif alg_name == "Hierarchical (Avg)":
+                    y_pred = HierarchicalClustering(n_clusters=n_cl, linkage="average").fit_predict(
                         torch.as_tensor(X, dtype=torch.float64), dist_matrix=dist_matrix
                     )
                 elif alg_name == "K-Center":

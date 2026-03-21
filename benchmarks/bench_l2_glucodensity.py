@@ -199,8 +199,22 @@ def main():
     dist_matrix = squareform(pdist(X_np, metric="euclidean"))
 
     dbscan_min_samples = max(5, N // 100)
-    dbscan_eps = estimate_dbscan_eps(X_np, min_samples=dbscan_min_samples)
-    hdbscan_min_cluster_size = max(5, N // 50)
+    # Try decreasing percentiles until DBSCAN produces ≥ 2 clusters (90th often collapses to 1)
+    dbscan_eps = None
+    for _pct in (50, 60, 70, 80, 90):
+        _candidate = estimate_dbscan_eps(X_np, min_samples=dbscan_min_samples, percentile=_pct)
+        _test_labels = DBSCANClustering(eps=_candidate, min_samples=dbscan_min_samples).fit_predict(
+            torch.as_tensor(X_np, dtype=torch.float64), dist_matrix=dist_matrix
+        )
+        _valid = _test_labels[_test_labels >= 0]
+        if len(_valid) >= 2 and len(set(_valid)) >= 2:
+            dbscan_eps = _candidate
+            print(f"  DBSCAN eps={_candidate:.4f} (percentile={_pct})")
+            break
+    if dbscan_eps is None:
+        dbscan_eps = estimate_dbscan_eps(X_np, min_samples=dbscan_min_samples, percentile=50)
+        print(f"  DBSCAN: no valid eps found; falling back to 50th percentile eps={dbscan_eps:.4f}")
+    hdbscan_min_cluster_size = max(2, N // 100)
 
     competitors = [
         ("K-Medoids", KMedoidsClustering(n_clusters=K)),
@@ -247,11 +261,20 @@ def main():
             else:
                 labels = method.fit_predict(X)
 
-            valid_mask = labels >= 0
-            if valid_mask.sum() < 2 or len(set(labels[valid_mask])) < 2:
-                print(f"  {name}: degenerate clustering, skipping.")
-                ari_results[name] = [float("nan")]
-                continue
+            # For density-based methods, noise points (label=-1) get reassigned to
+            # nearest non-noise cluster so ARI can be computed on all points.
+            labels = np.array(labels)
+            noise_mask = labels < 0
+            if noise_mask.any():
+                non_noise_idx = np.where(~noise_mask)[0]
+                if len(non_noise_idx) >= 2 and len(set(labels[~noise_mask])) >= 2:
+                    from scipy.spatial.distance import cdist
+                    X_np_arr = X.cpu().numpy() if torch.is_tensor(X) else np.asarray(X)
+                    dists = cdist(X_np_arr[noise_mask], X_np_arr[non_noise_idx])
+                    labels[noise_mask] = labels[non_noise_idx[dists.argmin(axis=1)]]
+                else:
+                    # All noise or single cluster — assign everyone to cluster 0
+                    labels[:] = 0
 
             ari = adjusted_rand_score(true_window_labels, labels)
             ari_results[name] = [ari]
