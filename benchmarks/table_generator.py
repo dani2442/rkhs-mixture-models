@@ -64,7 +64,7 @@ def generate_table(
 
     # ── Build rows ──────────────────────────────────────────────────
     n_bench = len(BENCHMARK_COLUMNS)
-    col_spec = "l l c c " + " ".join(["c"] * n_bench)
+    col_spec = "l l c c c " + " ".join(["c"] * n_bench)
 
     rows: list[str] = []
     prev_space = None
@@ -79,6 +79,7 @@ def generate_table(
             info["space"],
             info["train"],
             info["infer"],
+            info["memory"],
         ]
         for bench_id in BENCHMARK_COLUMNS:
             if bench_id not in info["benchmarks"]:
@@ -106,7 +107,7 @@ def generate_table(
         rows.append(" & ".join(cells) + r" \\")
 
     # ── Column headers ──────────────────────────────────────────────
-    headers = ["Method", "Space", "Train", "Infer"]
+    headers = ["Method", "Space", "Train", "Infer", "Memory"]
     headers.extend(col["header"] for col in BENCHMARK_COLUMNS.values())
     header_line = " & ".join(headers) + r" \\"
 
