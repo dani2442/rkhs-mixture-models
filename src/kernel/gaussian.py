@@ -87,6 +87,10 @@ class GaussianKernel(Kernel):
         Returns:
             J: shape (n, K)
         """
+        if self._is_diagonal_covariance(Kcov):
+            variances = torch.diagonal(Kcov, dim1=-2, dim2=-1)
+            return self.compute_J_diag(X, m, variances)
+
         device = X.device
         dtype = X.dtype
         n, M = X.shape
@@ -114,6 +118,33 @@ class GaussianKernel(Kernel):
 
         return J
 
+    def compute_J_diag(
+        self,
+        X: torch.Tensor,
+        m: torch.Tensor,
+        variances: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Compute J when each covariance is diagonal with entries `variances`.
+
+        Args:
+            X: Data points, shape (n, M)
+            m: Component means, shape (K, M)
+            variances: Diagonal variances, shape (K, M)
+
+        Returns:
+            J: shape (n, K)
+        """
+        scaled_var = variances / (self.sigma * self.sigma)
+        A_diag = 1.0 + scaled_var
+        logdetA = torch.log(A_diag).sum(dim=1)
+
+        diff = X.unsqueeze(1) - m.unsqueeze(0)
+        quad = (diff * diff / A_diag.unsqueeze(0)).sum(dim=-1)
+
+        logJ = -0.5 * logdetA.unsqueeze(0) + self.alpha * quad
+        return torch.exp(logJ)
+
     def compute_I(
         self,
         m: torch.Tensor,
@@ -133,6 +164,10 @@ class GaussianKernel(Kernel):
         Returns:
             I: shape (K, K)
         """
+        if self._is_diagonal_covariance(Kcov):
+            variances = torch.diagonal(Kcov, dim1=-2, dim2=-1)
+            return self.compute_I_diag(m, variances)
+
         device = m.device
         dtype = m.dtype
         K = m.shape[0]
@@ -157,3 +192,38 @@ class GaussianKernel(Kernel):
                 Imat[k, s] = torch.exp(logI)
 
         return Imat
+
+    def compute_I_diag(
+        self,
+        m: torch.Tensor,
+        variances: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Compute I when each covariance is diagonal with entries `variances`.
+
+        Args:
+            m: Component means, shape (K, M)
+            variances: Diagonal variances, shape (K, M)
+
+        Returns:
+            I: shape (K, K)
+        """
+        pair_var = variances.unsqueeze(1) + variances.unsqueeze(0)
+        A_diag = 1.0 + pair_var / (self.sigma * self.sigma)
+        logdetA = torch.log(A_diag).sum(dim=-1)
+
+        diff = m.unsqueeze(1) - m.unsqueeze(0)
+        quad = (diff * diff / A_diag).sum(dim=-1)
+
+        logI = -0.5 * logdetA + self.alpha * quad
+        return torch.exp(logI)
+
+    def _is_diagonal_covariance(self, Kcov: torch.Tensor) -> bool:
+        """
+        Detect diagonal covariance tensors.
+
+        This keeps the optimized diagonal path transparent to existing callers
+        that still pass covariances as full matrices.
+        """
+        off_diag = Kcov - torch.diag_embed(torch.diagonal(Kcov, dim1=-2, dim2=-1))
+        return bool(torch.allclose(off_diag, torch.zeros_like(off_diag)))
