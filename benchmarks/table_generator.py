@@ -74,8 +74,12 @@ def generate_table(
             rows.append("\\midrule")
         prev_space = info["space"]
 
+        cite_key = info.get("citation_key")
+        method_cell = (
+            f"{method_name}~\\cite{{{cite_key}}}" if cite_key else method_name
+        )
         cells = [
-            method_name,
+            method_cell,
             info["space"],
             info["train"],
             info["infer"],
