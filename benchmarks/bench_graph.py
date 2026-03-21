@@ -34,7 +34,7 @@ from torch_geometric.datasets import TUDataset
 
 from src import CanonicalBasis, GaussianKernel, GaussianMixtureModel, PolynomialKernel
 from src.spaces.graph_embedding import WLHashFingerprint
-from src.competitors.clustering import (
+from src.competitors import (
     DBSCANClustering,
     HDBSCANClustering,
     HierarchicalClustering,

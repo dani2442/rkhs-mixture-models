@@ -29,7 +29,7 @@ from examples.visualize_ntu_skeleton import (
     parse_skeleton_file,
 )
 from src import GaussianKernel, GaussianMixtureModel, L2CosineBasis, PolynomialKernel
-from src.competitors.clustering import (
+from src.competitors import (
     DBSCANClustering,
     HDBSCANClustering,
     HierarchicalClustering,
@@ -162,7 +162,7 @@ def main():
 
     use_fda = False
     try:
-        from src.competitors.clustering import (
+        from src.competitors import (
             ScikitFDAAgglomerative,
             ScikitFDAFuzzyCMeans,
             ScikitFDAKMeans,

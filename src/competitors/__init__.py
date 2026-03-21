@@ -9,7 +9,6 @@ from .feature_hddc import FeatureHDDCClustering
 from .feature_kmeans import FeatureKMeansClustering
 from .funclust import FunclustClustering
 from .funhddc import FunHDDCClustering
-from .functional_kmeans import FunctionalKMeansClustering
 from .k_centres import KCentresClustering
 from .metric_dbscan import DBSCANClustering
 from .metric_hdbscan import HDBSCANClustering
@@ -34,7 +33,6 @@ __all__ = [
     "FeatureGaussianMixtureClustering",
     "FeatureHDDCClustering",
     "MixturePPCAClustering",
-    "FunctionalKMeansClustering",
     "FunclustClustering",
     "FunHDDCClustering",
     "FclustClustering",

@@ -24,7 +24,7 @@ from src import (
     SO3Basis,
     generate_so3_mixture_data,
 )
-from src.competitors.clustering import (
+from src.competitors import (
     DBSCANClustering,
     HDBSCANClustering,
     HierarchicalClustering,

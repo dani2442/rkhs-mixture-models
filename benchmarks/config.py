@@ -108,15 +108,6 @@ METHOD_REGISTRY = OrderedDict(
             "citation_title": "Algorithms for Hierarchical Clustering: An Overview",
             "citation_doi": "10.1002/widm.53",
         },
-        "Functional K-Means": {
-            "space": r"$L^2$",
-            "train": r"$O(nK)$",
-            "infer": r"$O(nK)$",
-            "memory": r"$O(nK)$",
-            "benchmarks": ["l2", "l2_real", "glucodensity", "skeleton"],
-            "citation_title": "Functional Data Clustering: A Survey",
-            "citation_doi": "10.1007/s11634-013-0158-y",
-        },
         "Funclust": {
             "space": r"$L^2$",
             "train": r"$O(nK)$",
@@ -163,42 +154,42 @@ METHOD_REGISTRY = OrderedDict(
             "citation_doi": "10.1111/j.1541-0420.2012.01828.x",
         },
         # --- Feature-based competitors on projected coefficients/embeddings ---
-        "Feature K-Means": {
-            "space": "Feature",
-            "train": r"$O(nK)$",
-            "infer": r"$O(nK)$",
-            "memory": r"$O(nK)$",
-            "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
-            "citation_title": "Some Methods of Classification and Analysis of Multivariate Observations",
-            "citation_doi": None,
-        },
-        "Feature GMM": {
-            "space": "Feature",
-            "train": r"$O(nK)$",
-            "infer": r"$O(nK)$",
-            "memory": r"$O(nK)$",
-            "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
-            "citation_title": "Model-Based Clustering, Discriminant Analysis, and Density Estimation",
-            "citation_doi": "10.1198/016214502760047131",
-        },
-        "Feature HDDC": {
-            "space": "Feature",
-            "train": r"$O(nK)$",
-            "infer": r"$O(nK)$",
-            "memory": r"$O(nK)$",
-            "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
-            "citation_title": "High-Dimensional Data Clustering",
-            "citation_doi": "10.1016/j.csda.2007.02.009",
-        },
-        "Mixt-PPCA": {
-            "space": "Feature",
-            "train": r"$O(nK)$",
-            "infer": r"$O(nK)$",
-            "memory": r"$O(nK)$",
-            "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
-            "citation_title": "Mixtures of Probabilistic Principal Component Analysers",
-            "citation_doi": "10.1162/089976699300016728",
-        },
+        # "Feature K-Means": {
+        #     "space": "Feature",
+        #     "train": r"$O(nK)$",
+        #     "infer": r"$O(nK)$",
+        #     "memory": r"$O(nK)$",
+        #     "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
+        #     "citation_title": "Some Methods of Classification and Analysis of Multivariate Observations",
+        #     "citation_doi": None,
+        # },
+        # "Feature GMM": {
+        #     "space": "Feature",
+        #     "train": r"$O(nK)$",
+        #     "infer": r"$O(nK)$",
+        #     "memory": r"$O(nK)$",
+        #     "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
+        #     "citation_title": "Model-Based Clustering, Discriminant Analysis, and Density Estimation",
+        #     "citation_doi": "10.1198/016214502760047131",
+        # },
+        # "Feature HDDC": {
+        #     "space": "Feature",
+        #     "train": r"$O(nK)$",
+        #     "infer": r"$O(nK)$",
+        #     "memory": r"$O(nK)$",
+        #     "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
+        #     "citation_title": "High-Dimensional Data Clustering",
+        #     "citation_doi": "10.1016/j.csda.2007.02.009",
+        # },
+        # "Mixt-PPCA": {
+        #     "space": "Feature",
+        #     "train": r"$O(nK)$",
+        #     "infer": r"$O(nK)$",
+        #     "memory": r"$O(nK)$",
+        #     "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
+        #     "citation_title": "Mixtures of Probabilistic Principal Component Analysers",
+        #     "citation_doi": "10.1162/089976699300016728",
+        # },
         # --- sklearn R^d only ---
         "MiniBatch KMeans": {
             "space": r"$\mathbb{R}^n$",
@@ -293,18 +284,18 @@ BENCHMARK_COLUMNS = OrderedDict(
         "rd": {
             "header": r"$\mathbb{R}^d$",
         },
-        "l2": {
-            "header": r"$L^2$ Synth.",
-        },
+        # "l2": {
+        #     "header": r"$L^2$ Synth.",
+        # },
         "l2_real": {
-            "header": r"$L^2$ Real",
+            "header": r"$L^2$",
         },
         "glucodensity": {
             "header": "Gluco.",
         },
-        "skeleton": {
-            "header": "Skeleton",
-        },
+        # "skeleton": {
+        #     "header": "Skeleton",
+        # },
         "so3": {
             "header": r"$\mathrm{SO}(3)$",
         },

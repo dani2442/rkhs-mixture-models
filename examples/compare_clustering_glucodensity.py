@@ -28,7 +28,7 @@ from examples.train_glucodensity_temporal import (
     load_and_preprocess_cgm,
 )
 from src import GaussianKernel, GaussianMixtureModel
-from src.competitors.clustering import (
+from src.competitors import (
     DBSCANClustering,
     HDBSCANClustering,
     HierarchicalClustering,

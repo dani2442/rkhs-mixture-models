@@ -22,7 +22,7 @@ from src import (
     L2CosineBasis,
     PolynomialKernel,
 )
-from src.competitors.clustering import (
+from src.competitors import (
     DBSCANClustering,
     HDBSCANClustering,
     HierarchicalClustering,
@@ -115,7 +115,7 @@ def main():
     # FDA methods (optional)
     use_fda = False
     try:
-        from src.competitors.clustering import (
+        from src.competitors import (
             ScikitFDAAgglomerative,
             ScikitFDAFuzzyCMeans,
             ScikitFDAKMeans,

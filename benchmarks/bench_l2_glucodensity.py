@@ -33,7 +33,7 @@ from examples.compare_clustering_glucodensity import (
     resolve_gaussian_sigma,
 )
 from src import GaussianKernel, GaussianMixtureModel, PolynomialKernel
-from src.competitors.clustering import (
+from src.competitors import (
     DBSCANClustering,
     HDBSCANClustering,
     HierarchicalClustering,
@@ -229,7 +229,7 @@ def main():
 
     use_fda = False
     try:
-        from src.competitors.clustering import (
+        from src.competitors import (
             ScikitFDAAgglomerative,
             ScikitFDAFuzzyCMeans,
             ScikitFDAKMeans,

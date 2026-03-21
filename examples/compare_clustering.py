@@ -18,7 +18,7 @@ from src import (
     GaussianMixtureModel,
 )
 from examples.train_l2_gaussian import generate_n_datasets
-from src.competitors.clustering import (
+from src.competitors import (
     KMedoidsClustering,
     HierarchicalClustering,
     DBSCANClustering,
