@@ -39,17 +39,15 @@ class KMedoidsClustering:
         self.labels_ = None
         self.medoids_ = None
 
-    def fit_predict(self, X: torch.Tensor) -> np.ndarray:
+    def fit_predict(self, X: torch.Tensor, dist_matrix: np.ndarray = None) -> np.ndarray:
         if kmedoids is None:
             raise ImportError("kmedoids package is not installed.")
 
-        X_np = to_numpy(X)
-        # Compute distance matrix directly (using scipy or torch)
-        # Using scipy.spatial.distance.cdist to easily get condensed or square
-        from scipy.spatial.distance import pdist, squareform
-        
-        dist_matrix = squareform(pdist(X_np, metric="euclidean"))
-        
+        if dist_matrix is None:
+            X_np = to_numpy(X)
+            from scipy.spatial.distance import pdist, squareform
+            dist_matrix = squareform(pdist(X_np, metric="euclidean"))
+
         if self.method == "fasterpam":
             res = kmedoids.fasterpam(dist_matrix, self.n_clusters, max_iter=self.max_iter)
         else:
@@ -77,14 +75,15 @@ class HierarchicalClustering:
             linkage=self.linkage
         )
 
-    def fit_predict(self, X: torch.Tensor) -> np.ndarray:
+    def fit_predict(self, X: torch.Tensor, dist_matrix: np.ndarray = None) -> np.ndarray:
         if AgglomerativeClustering is None:
             raise ImportError("scikit-learn is not installed.")
 
-        X_np = to_numpy(X)
-        from scipy.spatial.distance import pdist, squareform
-        dist_matrix = squareform(pdist(X_np, metric="euclidean"))
-        
+        if dist_matrix is None:
+            X_np = to_numpy(X)
+            from scipy.spatial.distance import pdist, squareform
+            dist_matrix = squareform(pdist(X_np, metric="euclidean"))
+
         self.labels_ = self.model.fit_predict(dist_matrix)
         return self.labels_
 
@@ -99,14 +98,15 @@ class DBSCANClustering:
         self.labels_ = None
         self.model = DBSCAN(eps=self.eps, min_samples=self.min_samples, metric="precomputed")
 
-    def fit_predict(self, X: torch.Tensor) -> np.ndarray:
+    def fit_predict(self, X: torch.Tensor, dist_matrix: np.ndarray = None) -> np.ndarray:
         if DBSCAN is None:
             raise ImportError("scikit-learn is not installed.")
 
-        X_np = to_numpy(X)
-        from scipy.spatial.distance import pdist, squareform
-        dist_matrix = squareform(pdist(X_np, metric="euclidean"))
-        
+        if dist_matrix is None:
+            X_np = to_numpy(X)
+            from scipy.spatial.distance import pdist, squareform
+            dist_matrix = squareform(pdist(X_np, metric="euclidean"))
+
         self.labels_ = self.model.fit_predict(dist_matrix)
         return self.labels_
 
@@ -120,15 +120,15 @@ class HDBSCANClustering:
         self.labels_ = None
         self.model = HDBSCAN(min_cluster_size=self.min_cluster_size, metric="precomputed")
 
-    def fit_predict(self, X: torch.Tensor) -> np.ndarray:
+    def fit_predict(self, X: torch.Tensor, dist_matrix: np.ndarray = None) -> np.ndarray:
         if HDBSCAN is None:
             raise ImportError("scikit-learn >= 1.3 is required for HDBSCAN.")
 
-        X_np = to_numpy(X)
-        # Using float64 as required by scipy/sklearn precomputed sometimes
-        from scipy.spatial.distance import pdist, squareform
-        dist_matrix = squareform(pdist(X_np, metric="euclidean"))
-        
+        if dist_matrix is None:
+            X_np = to_numpy(X)
+            from scipy.spatial.distance import pdist, squareform
+            dist_matrix = squareform(pdist(X_np, metric="euclidean"))
+
         self.labels_ = self.model.fit_predict(dist_matrix)
         return self.labels_
 

@@ -9,6 +9,7 @@ Since ground-truth labels are unavailable, evaluation uses:
 """
 
 import argparse
+import gc
 import os
 import sys
 
@@ -416,6 +417,14 @@ def main() -> None:
         hdbscan_min_cluster_size = max(5, N // 50)  # at least 5, ~2% of data
         print(f"  DBSCAN auto eps={dbscan_eps:.4f} (min_samples={dbscan_min_samples})")
         print(f"  HDBSCAN min_cluster_size={hdbscan_min_cluster_size}")
+
+        # Share one pairwise distance matrix across precomputed-distance methods.
+        print("  Pre-computing pairwise distance matrix...")
+        from scipy.spatial.distance import pdist, squareform
+
+        dist_matrix = squareform(pdist(X_np, metric="euclidean"))
+        print(f"  Distance matrix shape: {dist_matrix.shape}  ({dist_matrix.nbytes / 1e6:.1f} MB)")
+
         competitors = [
             ("K-Medoids", KMedoidsClustering(n_clusters=K)),
             ("Hierarchical", HierarchicalClustering(n_clusters=K, linkage="average")),
@@ -436,10 +445,14 @@ def main() -> None:
         except Exception:
             print("  scikit-fda not available, skipping FDA methods.")
 
+        _uses_dist_matrix = {"K-Medoids", "Hierarchical", "DBSCAN", "HDBSCAN"}
+
         for name, method in competitors:
             try:
                 if "FDA" in name:
                     labels = method.fit_predict(X, basis=basis)
+                elif name in _uses_dist_matrix:
+                    labels = method.fit_predict(X, dist_matrix=dist_matrix)
                 else:
                     labels = method.fit_predict(X)
 
@@ -454,7 +467,7 @@ def main() -> None:
                     results[name] = {"silhouette": float("nan"), "tv": float("nan"), "ari": float("nan"), "labels": labels}
                     continue
 
-                sil = silhouette_score(X.cpu().numpy()[valid_mask], labels[valid_mask])
+                sil = silhouette_score(X_np[valid_mask], labels[valid_mask])
                 posteriors = compute_patient_posteriors_from_labels(labels, patient_ids, n_clusters_found)
                 tv = compute_tv_divergence(posteriors, CONTROL_IDS, TREATMENT_IDS)
                 ari = adjusted_rand_score(true_window_labels, labels) if true_window_labels is not None else float("nan")
@@ -464,6 +477,9 @@ def main() -> None:
             except Exception as e:
                 print(f"  {name} failed: {e}")
                 results[name] = {"silhouette": float("nan"), "tv": float("nan"), "ari": float("nan"), "labels": np.zeros(N)}
+
+        del dist_matrix
+        gc.collect()
 
     # ------------------------------------------------------------------
     # 7. Summary table
