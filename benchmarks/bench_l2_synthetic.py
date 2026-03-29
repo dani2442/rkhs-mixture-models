@@ -27,6 +27,7 @@ from src.competitors import (
     HDBSCANClustering,
     HierarchicalClustering,
     KCenterClustering,
+    KernelKGroupsClustering,
     KMedoidsClustering,
 )
 from examples.train_l2_gaussian import generate_n_datasets
@@ -110,6 +111,7 @@ def main():
         "DBSCAN": [],
         "HDBSCAN": [],
         "K-Center": [],
+        "Kernel k-Groups": [],
     }
 
     # FDA methods (optional)
@@ -174,6 +176,7 @@ def main():
             ("DBSCAN", DBSCANClustering(eps=1.5, min_samples=5)),
             ("HDBSCAN", HDBSCANClustering(min_cluster_size=5)),
             ("K-Center", KCenterClustering(n_clusters=N_COMPONENTS)),
+            ("Kernel k-Groups", KernelKGroupsClustering(n_clusters=N_COMPONENTS)),
         ]
 
         if use_fda:
@@ -193,7 +196,7 @@ def main():
                 ]
             )
 
-        _uses_dist = {"K-Medoids", "Hierarchical (Avg)", "DBSCAN", "HDBSCAN"}
+        _uses_dist = {"K-Medoids", "Hierarchical (Avg)", "DBSCAN", "HDBSCAN", "Kernel k-Groups"}
 
         for name, method in competitors:
             try:

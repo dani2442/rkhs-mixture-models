@@ -87,6 +87,16 @@ METHOD_REGISTRY = OrderedDict(
             "citation_title": "Clustering to Minimize the Maximum Intercluster Distance",
             "citation_doi": "10.1016/0304-3975(85)90224-5",
         },
+        "Kernel k-Groups": {
+            "space": "Metric",
+            "train": r"$O(Kn^2)$",
+            "infer": "---",
+            "memory": r"$O(n^2)$",
+            "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
+            "citation_key": "chiKernelKgroupsHartigan2020",
+            "citation_title": "Kernel k-Groups via Hartigan's Method",
+            "citation_doi": "10.1214/20-EJS1734",
+        },
         # --- FDA methods (functional data only) ---
         "FDA K-Means": {
             "space": r"$L^2$",

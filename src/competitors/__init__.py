@@ -10,6 +10,7 @@ from .feature_kmeans import FeatureKMeansClustering
 from .funclust import FunclustClustering
 from .funhddc import FunHDDCClustering
 from .k_centres import KCentresClustering
+from .kernel_kgroups import KernelKGroupsClustering
 from .metric_dbscan import DBSCANClustering
 from .metric_hdbscan import HDBSCANClustering
 from .metric_hierarchical import HierarchicalClustering
@@ -26,6 +27,7 @@ __all__ = [
     "DBSCANClustering",
     "HDBSCANClustering",
     "KCenterClustering",
+    "KernelKGroupsClustering",
     "ScikitFDAKMeans",
     "ScikitFDAFuzzyCMeans",
     "ScikitFDAAgglomerative",

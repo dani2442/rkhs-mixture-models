@@ -29,6 +29,7 @@ from src.competitors import (
     HDBSCANClustering,
     HierarchicalClustering,
     KCenterClustering,
+    KernelKGroupsClustering,
     KMedoidsClustering,
 )
 from benchmarks.runner import save_benchmark_results
@@ -87,6 +88,7 @@ def main():
         "DBSCAN": [],
         "HDBSCAN": [],
         "K-Center": [],
+        "Kernel k-Groups": [],
     }
 
     for i in range(N_DATASETS):
@@ -153,9 +155,10 @@ def main():
             ),
             ("HDBSCAN", HDBSCANClustering(min_cluster_size=hdbscan_min_cluster_size)),
             ("K-Center", KCenterClustering(n_clusters=N_COMPONENTS)),
+            ("Kernel k-Groups", KernelKGroupsClustering(n_clusters=N_COMPONENTS)),
         ]
 
-        _uses_dist = {"K-Medoids", "Hierarchical (Avg)", "DBSCAN", "HDBSCAN"}
+        _uses_dist = {"K-Medoids", "Hierarchical (Avg)", "DBSCAN", "HDBSCAN", "Kernel k-Groups"}
 
         for name, method in competitors:
             try:

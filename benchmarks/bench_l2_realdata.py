@@ -35,6 +35,7 @@ from src.competitors import (
     HDBSCANClustering,
     HierarchicalClustering,
     KCenterClustering,
+    KernelKGroupsClustering,
     KMedoidsClustering,
 )
 from examples.compare_clustering_glucodensity import estimate_dbscan_eps
@@ -231,6 +232,7 @@ def main():
         "DBSCAN": [],
         "HDBSCAN": [],
         "K-Center": [],
+        "Kernel k-Groups": [],
     }
 
     use_fda = False
@@ -309,6 +311,7 @@ def main():
             ("DBSCAN", DBSCANClustering(eps=dbscan_eps, min_samples=dbscan_min_samples)),
             ("HDBSCAN", HDBSCANClustering(min_cluster_size=hdbscan_min_cluster_size)),
             ("K-Center", KCenterClustering(n_clusters=K)),
+            ("Kernel k-Groups", KernelKGroupsClustering(n_clusters=K)),
         ]
 
         if use_fda:
@@ -318,7 +321,7 @@ def main():
                 ("FDA Agglomerative", ScikitFDAAgglomerative(n_clusters=K, linkage="average")),
             ])
 
-        _uses_dist = {"K-Medoids", "Hierarchical (Avg)", "DBSCAN", "HDBSCAN"}
+        _uses_dist = {"K-Medoids", "Hierarchical (Avg)", "DBSCAN", "HDBSCAN", "Kernel k-Groups"}
 
         for name, method in competitors:
             try:

@@ -34,6 +34,7 @@ from src.competitors import (
     HDBSCANClustering,
     HierarchicalClustering,
     KCenterClustering,
+    KernelKGroupsClustering,
     KMedoidsClustering,
 )
 from benchmarks.runner import save_benchmark_results
@@ -158,6 +159,7 @@ def main():
         "DBSCAN": [],
         "HDBSCAN": [],
         "K-Center": [],
+        "Kernel k-Groups": [],
     }
 
     use_fda = False
@@ -231,6 +233,7 @@ def main():
             ("DBSCAN", DBSCANClustering(eps=dbscan_eps, min_samples=dbscan_min_samples)),
             ("HDBSCAN", HDBSCANClustering(min_cluster_size=hdbscan_min_cluster_size)),
             ("K-Center", KCenterClustering(n_clusters=N_COMPONENTS)),
+            ("Kernel k-Groups", KernelKGroupsClustering(n_clusters=N_COMPONENTS)),
         ]
 
         if use_fda:
@@ -240,7 +243,7 @@ def main():
                 ("FDA Agglomerative", ScikitFDAAgglomerative(n_clusters=N_COMPONENTS, linkage="average")),
             ])
 
-        _uses_dist = {"K-Medoids", "Hierarchical (Avg)", "DBSCAN", "HDBSCAN"}
+        _uses_dist = {"K-Medoids", "Hierarchical (Avg)", "DBSCAN", "HDBSCAN", "Kernel k-Groups"}
 
         for name, method in competitors:
             try:
