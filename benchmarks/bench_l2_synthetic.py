@@ -114,10 +114,15 @@ def main():
         "Kernel k-Groups": [],
     }
 
-    # FDA methods (optional)
-    use_fda = False
+    # Functional-data baselines (optional wrappers plus local approximations)
+    use_functional = False
     try:
         from src.competitors import (
+            CurvclustClustering,
+            FclustClustering,
+            FunHDDCClustering,
+            FunclustClustering,
+            KCentresClustering,
             ScikitFDAAgglomerative,
             ScikitFDAFuzzyCMeans,
             ScikitFDAKMeans,
@@ -129,11 +134,16 @@ def main():
                 "FDA K-Means": [],
                 "FDA Fuzzy C-Means": [],
                 "FDA Agglomerative": [],
+                "Funclust": [],
+                "FunHDDC": [],
+                "fclust": [],
+                "K-Centres": [],
+                "Curvclust": [],
             }
         )
-        use_fda = True
+        use_functional = True
     except Exception:
-        print("scikit-fda not available, skipping FDA methods.")
+        print("functional-data baselines not available, skipping FDA/L2-specific methods.")
 
     # ── Evaluate over datasets ──────────────────────────────────────
     for i, (X_raw, X_coeffs, true_assignments, info) in enumerate(datasets):
@@ -179,7 +189,7 @@ def main():
             ("Kernel k-Groups", KernelKGroupsClustering(n_clusters=N_COMPONENTS)),
         ]
 
-        if use_fda:
+        if use_functional:
             competitors.extend(
                 [
                     ("FDA K-Means", ScikitFDAKMeans(n_clusters=N_COMPONENTS)),
@@ -193,6 +203,11 @@ def main():
                             n_clusters=N_COMPONENTS, linkage="average"
                         ),
                     ),
+                    ("Funclust", FunclustClustering(n_clusters=N_COMPONENTS)),
+                    ("FunHDDC", FunHDDCClustering(n_clusters=N_COMPONENTS)),
+                    ("fclust", FclustClustering(n_clusters=N_COMPONENTS)),
+                    ("K-Centres", KCentresClustering(n_clusters=N_COMPONENTS)),
+                    ("Curvclust", CurvclustClustering(n_clusters=N_COMPONENTS)),
                 ]
             )
 
@@ -200,7 +215,16 @@ def main():
 
         for name, method in competitors:
             try:
-                if "FDA" in name:
+                if name in {
+                    "FDA K-Means",
+                    "FDA Fuzzy C-Means",
+                    "FDA Agglomerative",
+                    "Funclust",
+                    "FunHDDC",
+                    "fclust",
+                    "K-Centres",
+                    "Curvclust",
+                }:
                     pred = method.fit_predict(X, basis=basis)
                 elif name in _uses_dist:
                     pred = method.fit_predict(X, dist_matrix=dist_matrix)

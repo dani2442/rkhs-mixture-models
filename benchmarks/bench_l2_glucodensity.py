@@ -229,9 +229,14 @@ def main():
         ("Kernel k-Groups", KernelKGroupsClustering(n_clusters=K)),
     ]
 
-    use_fda = False
+    use_functional = False
     try:
         from src.competitors import (
+            CurvclustClustering,
+            FclustClustering,
+            FunHDDCClustering,
+            FunclustClustering,
+            KCentresClustering,
             ScikitFDAAgglomerative,
             ScikitFDAFuzzyCMeans,
             ScikitFDAKMeans,
@@ -246,17 +251,31 @@ def main():
                     "FDA Agglomerative",
                     ScikitFDAAgglomerative(n_clusters=K, linkage="average"),
                 ),
+                ("Funclust", FunclustClustering(n_clusters=K)),
+                ("FunHDDC", FunHDDCClustering(n_clusters=K)),
+                ("fclust", FclustClustering(n_clusters=K)),
+                ("K-Centres", KCentresClustering(n_clusters=K)),
+                ("Curvclust", CurvclustClustering(n_clusters=K)),
             ]
         )
-        use_fda = True
+        use_functional = True
     except Exception:
-        print("  scikit-fda not available, skipping FDA methods.")
+        print("  functional-data baselines not available, skipping FDA/L2-specific methods.")
 
     _uses_dist = {"K-Medoids", "Hierarchical (Avg)", "DBSCAN", "HDBSCAN", "Kernel k-Groups"}
 
     for name, method in competitors:
         try:
-            if "FDA" in name:
+            if name in {
+                "FDA K-Means",
+                "FDA Fuzzy C-Means",
+                "FDA Agglomerative",
+                "Funclust",
+                "FunHDDC",
+                "fclust",
+                "K-Centres",
+                "Curvclust",
+            }:
                 labels = method.fit_predict(X, basis=basis)
             elif name in _uses_dist:
                 labels = method.fit_predict(X, dist_matrix=dist_matrix)
