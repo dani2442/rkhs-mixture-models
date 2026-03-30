@@ -39,7 +39,9 @@ from src.competitors import (
     HDBSCANClustering,
     HierarchicalClustering,
     KCenterClustering,
+    KernelKGroupsClustering,
     KMedoidsClustering,
+    ProjectedGMMEMFixedCovarianceClustering,
 )
 from benchmarks.runner import save_benchmark_results
 
@@ -311,11 +313,13 @@ def main():
     ari_results: dict[str, list[float]] = {
         "MMD GMM (Gaussian)": [],
         "MMD GMM (Polynomial)": [],
+        "Projected GMM-EM": [],
         "K-Medoids": [],
         "Hierarchical (Avg)": [],
         "DBSCAN": [],
         "HDBSCAN": [],
         "K-Center": [],
+        "Kernel k-Groups": [],
     }
 
     for run in range(N_RUNS):
@@ -343,6 +347,16 @@ def main():
         ari_results["MMD GMM (Polynomial)"].append(ari)
         print(f"  MMD GMM (Polynomial)  ARI={ari:.4f}", flush=True)
 
+        em_labels = ProjectedGMMEMFixedCovarianceClustering(
+            n_clusters=N_COMPONENTS,
+            n_init=3,
+            max_iter=100,
+            random_state=run_seed,
+        ).fit_predict(X)
+        ari = adjusted_rand_score(true_labels, em_labels)
+        ari_results["Projected GMM-EM"].append(ari)
+        print(f"  Projected GMM-EM      ARI={ari:.4f}", flush=True)
+
         # ── Competitors (cosine distance on raw WL fingerprints) ────
         competitors = [
             ("K-Medoids", KMedoidsClustering(n_clusters=N_COMPONENTS)),
@@ -356,8 +370,9 @@ def main():
             ),
             ("HDBSCAN", HDBSCANClustering(min_cluster_size=hdbscan_min_cluster_size)),
             ("K-Center", KCenterClustering(n_clusters=N_COMPONENTS)),
+            ("Kernel k-Groups", KernelKGroupsClustering(n_clusters=N_COMPONENTS)),
         ]
-        _uses_dist = {"K-Medoids", "Hierarchical (Avg)", "DBSCAN", "HDBSCAN"}
+        _uses_dist = {"K-Medoids", "Hierarchical (Avg)", "DBSCAN", "HDBSCAN", "Kernel k-Groups"}
 
         for name, method in competitors:
             try:

@@ -34,7 +34,9 @@ from src.competitors import (
     HDBSCANClustering,
     HierarchicalClustering,
     KCenterClustering,
+    KernelKGroupsClustering,
     KMedoidsClustering,
+    ProjectedGMMEMFixedCovarianceClustering,
 )
 from benchmarks.runner import save_benchmark_results
 
@@ -153,16 +155,23 @@ def main():
     ari_results: dict[str, list[float]] = {
         "MMD GMM (Gaussian)": [],
         "MMD GMM (Polynomial)": [],
+        "Projected GMM-EM": [],
         "K-Medoids": [],
         "Hierarchical (Avg)": [],
         "DBSCAN": [],
         "HDBSCAN": [],
         "K-Center": [],
+        "Kernel k-Groups": [],
     }
 
-    use_fda = False
+    use_functional = False
     try:
         from src.competitors import (
+            CurvclustClustering,
+            FclustClustering,
+            FunHDDCClustering,
+            FunclustClustering,
+            KCentresClustering,
             ScikitFDAAgglomerative,
             ScikitFDAFuzzyCMeans,
             ScikitFDAKMeans,
@@ -172,10 +181,15 @@ def main():
             "FDA K-Means": [],
             "FDA Fuzzy C-Means": [],
             "FDA Agglomerative": [],
+            "Funclust": [],
+            "FunHDDC": [],
+            "fclust": [],
+            "K-Centres": [],
+            "Curvclust": [],
         })
-        use_fda = True
+        use_functional = True
     except Exception:
-        print("  scikit-fda not available, skipping FDA methods.")
+        print("  functional-data baselines not available, skipping FDA/L2-specific methods.")
 
     for run in range(N_RUNS):
         run_seed = SEED + run
@@ -215,6 +229,17 @@ def main():
         ari_results["MMD GMM (Polynomial)"].append(ari)
         print(f"  MMD GMM (Polynomial)  ARI={ari:.4f}")
 
+        em_labels = ProjectedGMMEMFixedCovarianceClustering(
+            n_clusters=N_COMPONENTS,
+            basis=basis,
+            n_init=3,
+            max_iter=100,
+            random_state=run_seed,
+        ).fit_predict(X_raw)
+        ari = adjusted_rand_score(true_labels, em_labels)
+        ari_results["Projected GMM-EM"].append(ari)
+        print(f"  Projected GMM-EM      ARI={ari:.4f}")
+
         # Competitors
         from scipy.spatial.distance import pdist, squareform
         X_np = X.cpu().numpy()
@@ -231,20 +256,35 @@ def main():
             ("DBSCAN", DBSCANClustering(eps=dbscan_eps, min_samples=dbscan_min_samples)),
             ("HDBSCAN", HDBSCANClustering(min_cluster_size=hdbscan_min_cluster_size)),
             ("K-Center", KCenterClustering(n_clusters=N_COMPONENTS)),
+            ("Kernel k-Groups", KernelKGroupsClustering(n_clusters=N_COMPONENTS)),
         ]
 
-        if use_fda:
+        if use_functional:
             competitors.extend([
                 ("FDA K-Means", ScikitFDAKMeans(n_clusters=N_COMPONENTS)),
                 ("FDA Fuzzy C-Means", ScikitFDAFuzzyCMeans(n_clusters=N_COMPONENTS)),
                 ("FDA Agglomerative", ScikitFDAAgglomerative(n_clusters=N_COMPONENTS, linkage="average")),
+                ("Funclust", FunclustClustering(n_clusters=N_COMPONENTS)),
+                ("FunHDDC", FunHDDCClustering(n_clusters=N_COMPONENTS)),
+                ("fclust", FclustClustering(n_clusters=N_COMPONENTS)),
+                ("K-Centres", KCentresClustering(n_clusters=N_COMPONENTS)),
+                ("Curvclust", CurvclustClustering(n_clusters=N_COMPONENTS)),
             ])
 
-        _uses_dist = {"K-Medoids", "Hierarchical (Avg)", "DBSCAN", "HDBSCAN"}
+        _uses_dist = {"K-Medoids", "Hierarchical (Avg)", "DBSCAN", "HDBSCAN", "Kernel k-Groups"}
 
         for name, method in competitors:
             try:
-                if "FDA" in name:
+                if name in {
+                    "FDA K-Means",
+                    "FDA Fuzzy C-Means",
+                    "FDA Agglomerative",
+                    "Funclust",
+                    "FunHDDC",
+                    "fclust",
+                    "K-Centres",
+                    "Curvclust",
+                }:
                     pred = method.fit_predict(X, basis=basis)
                 elif name in _uses_dist:
                     pred = method.fit_predict(X, dist_matrix=dist_matrix)

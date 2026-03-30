@@ -29,7 +29,9 @@ from src.competitors import (
     HDBSCANClustering,
     HierarchicalClustering,
     KCenterClustering,
+    KernelKGroupsClustering,
     KMedoidsClustering,
+    ProjectedGMMEMFixedCovarianceClustering,
 )
 from benchmarks.runner import save_benchmark_results
 
@@ -82,11 +84,13 @@ def main():
     ari_results: dict[str, list[float]] = {
         "MMD GMM (Gaussian)": [],
         "MMD GMM (Polynomial)": [],
+        "Projected GMM-EM": [],
         "K-Medoids": [],
         "Hierarchical (Avg)": [],
         "DBSCAN": [],
         "HDBSCAN": [],
         "K-Center": [],
+        "Kernel k-Groups": [],
     }
 
     for i in range(N_DATASETS):
@@ -131,6 +135,17 @@ def main():
         ari_results["MMD GMM (Polynomial)"].append(ari)
         print(f"  MMD GMM (Polynomial)  ARI={ari:.4f}")
 
+        em_labels = ProjectedGMMEMFixedCovarianceClustering(
+            n_clusters=N_COMPONENTS,
+            basis=basis,
+            n_init=3,
+            max_iter=100,
+            random_state=ds_seed,
+        ).fit_predict(X_euler)
+        ari = adjusted_rand_score(true_labels, em_labels)
+        ari_results["Projected GMM-EM"].append(ari)
+        print(f"  Projected GMM-EM      ARI={ari:.4f}")
+
         # Competitors
         X_np = X.cpu().numpy()
         dist_matrix = squareform(pdist(X_np, metric="euclidean"))
@@ -153,9 +168,10 @@ def main():
             ),
             ("HDBSCAN", HDBSCANClustering(min_cluster_size=hdbscan_min_cluster_size)),
             ("K-Center", KCenterClustering(n_clusters=N_COMPONENTS)),
+            ("Kernel k-Groups", KernelKGroupsClustering(n_clusters=N_COMPONENTS)),
         ]
 
-        _uses_dist = {"K-Medoids", "Hierarchical (Avg)", "DBSCAN", "HDBSCAN"}
+        _uses_dist = {"K-Medoids", "Hierarchical (Avg)", "DBSCAN", "HDBSCAN", "Kernel k-Groups"}
 
         for name, method in competitors:
             try:

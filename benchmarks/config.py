@@ -36,6 +36,16 @@ METHOD_REGISTRY = OrderedDict(
             "citation_title": "Random Objects in Hilbert Spaces via Kernel Mixture Gaussian Model",
             "citation_doi": None,
         },
+        "Projected GMM-EM": {
+            "space": "Hilbert",
+            "train": r"$O(nK)$",
+            "infer": r"$O(nK)$",
+            "memory": r"$O(nK)$",
+            "benchmarks": ["l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
+            "citation_key": None,
+            "citation_title": "Random Objects in Hilbert Spaces via Kernel Mixture Gaussian Model",
+            "citation_doi": None,
+        },
         # --- Metric-space competitors ---
         "K-Medoids": {
             "space": "Metric",
@@ -86,6 +96,16 @@ METHOD_REGISTRY = OrderedDict(
             "citation_key": "gonzalezClusteringMinimizeMaximum1985",
             "citation_title": "Clustering to Minimize the Maximum Intercluster Distance",
             "citation_doi": "10.1016/0304-3975(85)90224-5",
+        },
+        "Kernel k-Groups": {
+            "space": "Metric",
+            "train": r"$O(Kn^2)$",
+            "infer": "---",
+            "memory": r"$O(n^2)$",
+            "benchmarks": ["rd", "l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
+            "citation_key": "francaKernelKGroupsHartigans2017",
+            "citation_title": "Kernel k-Groups via Hartigan's Method",
+            "citation_doi": "10.1214/20-EJS1734",
         },
         # --- FDA methods (functional data only) ---
         "FDA K-Means": {

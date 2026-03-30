@@ -38,7 +38,9 @@ from src.competitors import (
     HDBSCANClustering,
     HierarchicalClustering,
     KCenterClustering,
+    KernelKGroupsClustering,
     KMedoidsClustering,
+    ProjectedGMMEMFixedCovarianceClustering,
 )
 from benchmarks.runner import save_benchmark_results
 
@@ -192,6 +194,16 @@ def main():
 
         ari_results[kernel_name] = aris
 
+    em_labels = ProjectedGMMEMFixedCovarianceClustering(
+        n_clusters=K,
+        n_init=3,
+        max_iter=100,
+        random_state=SEED,
+    ).fit_predict(X)
+    em_ari = adjusted_rand_score(true_window_labels, em_labels)
+    ari_results["Projected GMM-EM"] = [em_ari]
+    print(f"  Projected GMM-EM      ARI={em_ari:.4f}")
+
     # ── Competitors ─────────────────────────────────────────────────
     X_np = X.cpu().numpy()
     from scipy.spatial.distance import pdist, squareform
@@ -225,11 +237,17 @@ def main():
         ("DBSCAN", DBSCANClustering(eps=dbscan_eps, min_samples=dbscan_min_samples)),
         ("HDBSCAN", HDBSCANClustering(min_cluster_size=hdbscan_min_cluster_size)),
         ("K-Center", KCenterClustering(n_clusters=K)),
+        ("Kernel k-Groups", KernelKGroupsClustering(n_clusters=K)),
     ]
 
-    use_fda = False
+    use_functional = False
     try:
         from src.competitors import (
+            CurvclustClustering,
+            FclustClustering,
+            FunHDDCClustering,
+            FunclustClustering,
+            KCentresClustering,
             ScikitFDAAgglomerative,
             ScikitFDAFuzzyCMeans,
             ScikitFDAKMeans,
@@ -244,17 +262,31 @@ def main():
                     "FDA Agglomerative",
                     ScikitFDAAgglomerative(n_clusters=K, linkage="average"),
                 ),
+                ("Funclust", FunclustClustering(n_clusters=K)),
+                ("FunHDDC", FunHDDCClustering(n_clusters=K)),
+                ("fclust", FclustClustering(n_clusters=K)),
+                ("K-Centres", KCentresClustering(n_clusters=K)),
+                ("Curvclust", CurvclustClustering(n_clusters=K)),
             ]
         )
-        use_fda = True
+        use_functional = True
     except Exception:
-        print("  scikit-fda not available, skipping FDA methods.")
+        print("  functional-data baselines not available, skipping FDA/L2-specific methods.")
 
-    _uses_dist = {"K-Medoids", "Hierarchical (Avg)", "DBSCAN", "HDBSCAN"}
+    _uses_dist = {"K-Medoids", "Hierarchical (Avg)", "DBSCAN", "HDBSCAN", "Kernel k-Groups"}
 
     for name, method in competitors:
         try:
-            if "FDA" in name:
+            if name in {
+                "FDA K-Means",
+                "FDA Fuzzy C-Means",
+                "FDA Agglomerative",
+                "Funclust",
+                "FunHDDC",
+                "fclust",
+                "K-Centres",
+                "Curvclust",
+            }:
                 labels = method.fit_predict(X, basis=basis)
             elif name in _uses_dist:
                 labels = method.fit_predict(X, dist_matrix=dist_matrix)

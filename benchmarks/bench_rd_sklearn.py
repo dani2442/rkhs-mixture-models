@@ -27,6 +27,7 @@ from src.competitors import (
     HDBSCANClustering,
     HierarchicalClustering,
     KCenterClustering,
+    KernelKGroupsClustering,
     KMedoidsClustering,
 )
 from benchmarks.runner import save_benchmark_results
@@ -168,6 +169,7 @@ def main():
             ("K-Medoids", KMedoidsClustering(n_clusters=n_cl)),
             ("Hierarchical (Avg)", HierarchicalClustering(n_clusters=n_cl, linkage="average")),
             ("K-Center", KCenterClustering(n_clusters=n_cl)),
+            ("Kernel k-Groups", KernelKGroupsClustering(n_clusters=n_cl)),
         ])
 
         # MMD variants
@@ -193,6 +195,10 @@ def main():
                 elif alg_name == "K-Center":
                     y_pred = KCenterClustering(n_clusters=n_cl).fit_predict(
                         torch.as_tensor(X, dtype=torch.float64)
+                    )
+                elif alg_name == "Kernel k-Groups":
+                    y_pred = KernelKGroupsClustering(n_clusters=n_cl).fit_predict(
+                        torch.as_tensor(X, dtype=torch.float64), dist_matrix=dist_matrix
                     )
                 else:
                     with warnings.catch_warnings():
