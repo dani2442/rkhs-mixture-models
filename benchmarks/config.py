@@ -42,9 +42,9 @@ METHOD_REGISTRY = OrderedDict(
             "infer": r"$O(nK)$",
             "memory": r"$O(nK)$",
             "benchmarks": ["l2", "l2_real", "glucodensity", "skeleton", "so3", "graph"],
-            "citation_key": "dempsterMaximumLikelihoodIncomplete1977",
-            "citation_title": "Maximum Likelihood from Incomplete Data via the EM Algorithm",
-            "citation_doi": "10.1111/j.2517-6161.1977.tb01600.x",
+            "citation_key": None,
+            "citation_title": "Random Objects in Hilbert Spaces via Kernel Mixture Gaussian Model",
+            "citation_doi": None,
         },
         # --- Metric-space competitors ---
         "K-Medoids": {
