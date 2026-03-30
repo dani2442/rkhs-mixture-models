@@ -32,7 +32,7 @@ import torch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src import GaussianKernel
-from src.spaces import L2CosineBasis
+from src.spaces import H1CosineBasis, L2CosineBasis
 from src.temporal_mixture import (
     BasisLogitsTimeWeights,
     NeuralODETimeWeights,
@@ -326,19 +326,20 @@ def build_temporal_data(
 
 
 # ---------------------------------------------------------------------------
-# 4. Project intraday curves to L² cosine basis
+# 4. Project intraday curves to a functional basis
 # ---------------------------------------------------------------------------
 
 
-def project_intraday_to_l2(
+def project_intraday_curves(
     X_time_raw: torch.Tensor,
     R_s: int,
     device: torch.device,
     dtype: torch.dtype,
     mask: torch.Tensor | None = None,
+    space_metric: str = "l2",
 ) -> Tuple[torch.Tensor, L2CosineBasis]:
     """
-    Project the raw 288-slot intraday curves to an L² cosine basis.
+    Project the raw 288-slot intraday curves to a cosine basis geometry.
 
     Args:
         X_time_raw: (L_t, n, 288) raw glucose values (may contain padding)
@@ -346,18 +347,26 @@ def project_intraday_to_l2(
         mask: Optional boolean tensor (L_t, n). True = valid sample.
               When provided, normalization statistics are computed only
               over valid (non-padding) entries.
+        space_metric: ``"l2"`` or ``"h1"``. ``"h1"`` uses Sobolev-scaled
+            cosine coefficients so Euclidean distances match the H^1 norm on
+            the normalized intraday domain.
 
     Returns:
         X_time: (L_t, n, M_s) coefficient tensor (normalized)
-        space_basis: the L2CosineBasis object used
+        space_basis: the cosine-basis object used
         coeff_mean: (M_s,) mean used for normalization
         coeff_std: (M_s,) std used for normalization
     """
     L_t, n, n_slots = X_time_raw.shape
     assert n_slots == 288, f"Expected 288 slots, got {n_slots}"
 
+    metric = space_metric.lower()
+    if metric not in {"l2", "h1"}:
+        raise ValueError(f"space_metric must be 'l2' or 'h1', got {space_metric!r}")
+
     # Treat 24h period as T=1 (normalized domain)
-    space_basis = L2CosineBasis(
+    basis_cls = L2CosineBasis if metric == "l2" else H1CosineBasis
+    space_basis = basis_cls(
         T=1.0,
         R=R_s,
         grid_size=n_slots,
@@ -367,7 +376,7 @@ def project_intraday_to_l2(
     )
 
     # Project each (L_t, n) slice: X_time_raw[l] has shape (n, 288)
-    # L2CosineBasis.project expects (n, L, d) → we need (n, 288, 1)
+    # The cosine basis expects (n, L, d) → we need (n, 288, 1)
     coeffs_list = []
     for l in range(L_t):
         X_l = X_time_raw[l].unsqueeze(-1)  # (n, 288, 1)
@@ -429,6 +438,7 @@ def build_training_representation(
     r_s: int,
     device: torch.device,
     dtype: torch.dtype,
+    space_metric: str = "l2",
     verbose: bool = True,
 ) -> dict:
     """Build temporal slices + projected coefficients for a given config."""
@@ -441,14 +451,19 @@ def build_training_representation(
         verbose=verbose,
     )
 
-    X_time, space_basis, coeff_mean, coeff_std = project_intraday_to_l2(
+    metric = space_metric.lower()
+    X_time, space_basis, coeff_mean, coeff_std = project_intraday_curves(
         X_time_raw=X_time_raw,
         R_s=r_s,
         device=device,
         dtype=dtype,
         mask=mask,
+        space_metric=metric,
     )
     sigma_auto = estimate_sigma_median_heuristic(X_time=X_time, mask=mask)
+
+    if verbose:
+        print(f"  Space metric: {metric.upper()}")
 
     return {
         "X_time_raw": X_time_raw,
@@ -458,6 +473,7 @@ def build_training_representation(
         "t_min_days": t_min_days,
         "t_max_days": t_max_days,
         "space_basis": space_basis,
+        "space_metric": metric,
         "coeff_mean": coeff_mean,
         "coeff_std": coeff_std,
         "coeff_dim": int(X_time.shape[-1]),
