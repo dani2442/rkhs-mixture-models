@@ -66,13 +66,13 @@ def parse_args() -> argparse.Namespace:
 
     # Fixed best-config defaults (can be overridden if needed)
     p.add_argument("--model-type", choices=["basis", "ode"], default="ode")
-    p.add_argument("--n-components", type=int, default=3)
+    p.add_argument("--n-components", type=int, default=2)
     p.add_argument("--r-s", type=int, default=8, help="Cosine basis functions for intraday")
     p.add_argument("--n-time-bins", type=int, default=16, help="Number of temporal bins")
     p.add_argument(
         "--space-metric",
         choices=["l2", "h1"],
-        default="l2",
+        default="h1",
         help="Geometry for intraday curves before MMD fitting.",
     )
     p.add_argument("--r-pi", type=int, default=6, help="Basis functions for pi(t) when model-type=basis")
