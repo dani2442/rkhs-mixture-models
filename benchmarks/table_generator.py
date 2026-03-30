@@ -121,9 +121,11 @@ def generate_table(
         r"\centering",
         r"\caption{Clustering comparison across spaces (ARI). "
         r"Each cell shows $\mathrm{mean}_{\mathrm{std}}$ over multiple "
-        r"datasets/runs. Best per column in \textbf{bold}. "
-        r"``---'' indicates the method cannot handle that space or "
-        r"the benchmark has not been run yet.}",
+        r"datasets/runs. "
+        r"Best per column in \textbf{bold}. "
+        r"``---'' indicates the method cannot handle that space or the "
+        r"benchmark has not been run yet. "
+        r"}",
         r"\label{tab:unified_benchmark}",
         r"\setlength{\tabcolsep}{4pt}",
         r"\scriptsize",

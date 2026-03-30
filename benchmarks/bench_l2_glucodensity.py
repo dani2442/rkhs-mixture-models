@@ -40,6 +40,7 @@ from src.competitors import (
     KCenterClustering,
     KernelKGroupsClustering,
     KMedoidsClustering,
+    ProjectedGMMEMFixedCovarianceClustering,
 )
 from benchmarks.runner import save_benchmark_results
 
@@ -192,6 +193,16 @@ def main():
             print(f"  {kernel_name} restart {restart + 1}/{N_RESTARTS}  ARI={ari:.4f}")
 
         ari_results[kernel_name] = aris
+
+    em_labels = ProjectedGMMEMFixedCovarianceClustering(
+        n_clusters=K,
+        n_init=3,
+        max_iter=100,
+        random_state=SEED,
+    ).fit_predict(X)
+    em_ari = adjusted_rand_score(true_window_labels, em_labels)
+    ari_results["Projected GMM-EM"] = [em_ari]
+    print(f"  Projected GMM-EM      ARI={em_ari:.4f}")
 
     # ── Competitors ─────────────────────────────────────────────────
     X_np = X.cpu().numpy()

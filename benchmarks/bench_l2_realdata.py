@@ -37,6 +37,7 @@ from src.competitors import (
     KCenterClustering,
     KernelKGroupsClustering,
     KMedoidsClustering,
+    ProjectedGMMEMFixedCovarianceClustering,
 )
 from examples.compare_clustering_glucodensity import estimate_dbscan_eps
 from benchmarks.runner import save_benchmark_results
@@ -227,6 +228,7 @@ def main():
     ari_results: dict[str, list[float]] = {
         "MMD GMM (Gaussian)": [],
         "MMD GMM (Polynomial)": [],
+        "Projected GMM-EM": [],
         "K-Medoids": [],
         "Hierarchical (Avg)": [],
         "DBSCAN": [],
@@ -307,6 +309,16 @@ def main():
         ari = adjusted_rand_score(y_true, labels)
         ari_results["MMD GMM (Polynomial)"].append(ari)
         print(f"  MMD GMM (Polynomial)  ARI={ari:.4f}")
+
+        em_labels = ProjectedGMMEMFixedCovarianceClustering(
+            n_clusters=K,
+            n_init=3,
+            max_iter=100,
+            random_state=SEED,
+        ).fit_predict(X)
+        ari = adjusted_rand_score(y_true, em_labels)
+        ari_results["Projected GMM-EM"].append(ari)
+        print(f"  Projected GMM-EM      ARI={ari:.4f}")
 
         # Metric-space competitors
         dist_matrix = squareform(pdist(X_np_coeffs, metric="euclidean"))

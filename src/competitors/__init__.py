@@ -17,6 +17,7 @@ from .metric_hierarchical import HierarchicalClustering
 from .metric_kcenter import KCenterClustering
 from .metric_kmedoids import KMedoidsClustering
 from .mixt_ppca import MixturePPCAClustering
+from .projected_gmm_em import ProjectedGMMEMFixedCovarianceClustering
 from .scikitfda_agglomerative import ScikitFDAAgglomerative
 from .scikitfda_fuzzy_cmeans import ScikitFDAFuzzyCMeans
 from .scikitfda_kmeans import ScikitFDAKMeans
@@ -28,6 +29,7 @@ __all__ = [
     "HDBSCANClustering",
     "KCenterClustering",
     "KernelKGroupsClustering",
+    "ProjectedGMMEMFixedCovarianceClustering",
     "ScikitFDAKMeans",
     "ScikitFDAFuzzyCMeans",
     "ScikitFDAAgglomerative",
