@@ -2,10 +2,10 @@
 Projected Gaussian-mixture EM (Algorithm 1 from Appendix, Section likelihood).
 
 Implements the projected EM algorithm for the Gaussian-mixture log-likelihood
-as described in the paper.  The primary mode updates per-component weights,
-means, and covariances with optional ridge regularisation (epsilon * I_M).
-A ``fixed_covariance`` flag activates the benchmark variant in which only
-weights and means are updated while the covariance is held fixed.
+as described in the paper.  Updates per-component weights, means, and
+covariances with ridge regularisation (epsilon * I_M).  Setting
+``fixed_covariance=True`` activates the benchmark variant in which only
+weights and means are updated.
 """
 
 from __future__ import annotations
@@ -33,14 +33,8 @@ class ProjectedGaussianMixtureEM:
         Number of mixture components *K*.
     fixed_covariance : bool
         If ``True``, covariances are not updated in the M-step (benchmark
-        variant described in the paper).  The shared covariance is set
-        according to *covariance_mode* / *covariance*.
-    covariance_mode : str
-        How to build the initial (or fixed) covariance.  One of
-        ``"empirical"``, ``"diagonal_empirical"``, ``"spherical_empirical"``,
-        ``"identity"``.  Ignored when *covariance* is provided explicitly.
-    covariance : np.ndarray or None
-        An explicit shared covariance matrix.  Overrides *covariance_mode*.
+        variant described in the paper).  A shared empirical covariance is
+        used for all components.
     max_iter : int
         Maximum number of EM iterations *T_EM*.
     tol : float
@@ -59,8 +53,6 @@ class ProjectedGaussianMixtureEM:
         self,
         n_clusters: int,
         fixed_covariance: bool = False,
-        covariance_mode: str = "empirical",
-        covariance: np.ndarray | None = None,
         max_iter: int = 200,
         tol: float = 1e-4,
         n_init: int = 3,
@@ -69,35 +61,26 @@ class ProjectedGaussianMixtureEM:
     ):
         self.n_clusters = n_clusters
         self.fixed_covariance = fixed_covariance
-        self.covariance_mode = covariance_mode
-        self.covariance = covariance
         self.max_iter = max_iter
         self.tol = tol
         self.n_init = n_init
         self.random_state = random_state
         self.reg_covar = reg_covar
 
-        # Fitted attributes
         self.weights_: np.ndarray | None = None
         self.means_: np.ndarray | None = None
-        self.covariances_: np.ndarray | None = None  # (K, M, M)
+        self.covariances_: np.ndarray | None = None
         self.responsibilities_: np.ndarray | None = None
         self.labels_: np.ndarray | None = None
         self.lower_bound_: float | None = None
         self.n_iter_: int = 0
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def fit(self, X: np.ndarray):
-        """Run the projected EM algorithm on data ``X`` of shape (n, M)."""
         X = np.asarray(X, dtype=float)
         if X.ndim != 2:
             raise ValueError("Projected EM expects a 2D feature matrix.")
 
         n, M = X.shape
-        K = self.n_clusters
         rng = np.random.RandomState(self.random_state)
 
         best_state = None
@@ -114,13 +97,13 @@ class ProjectedGaussianMixtureEM:
             previous_lower_bound = -np.inf
 
             for iteration in range(1, self.max_iter + 1):
-                # --- E-step: compute responsibilities r_{ik} ---
+                # E-step: r_{ik} = pi_k phi_M(x_i; m_k, K_k) / sum_s ...
                 log_resp = self._e_step(X, weights, means, chols, logdets)
                 log_norm = logsumexp(log_resp, axis=1)
                 lower_bound = float(log_norm.sum())
                 resp = np.exp(log_resp - log_norm[:, None])
 
-                # --- M-step ---
+                # M-step
                 weights, means, covariances = self._m_step(
                     X, resp, covariances, seed
                 )
@@ -177,28 +160,15 @@ class ProjectedGaussianMixtureEM:
     # E-step
     # ------------------------------------------------------------------
 
-    def _e_step(
-        self,
-        X: np.ndarray,
-        weights: np.ndarray,
-        means: np.ndarray,
-        chols: np.ndarray,
-        logdets: np.ndarray,
-    ) -> np.ndarray:
-        """Compute log(pi_k * phi_M(x_i; m_k, K_k)) for all i, k.
-
-        Uses Cholesky factors for numerical stability:
-            phi_M(x; m, K) = (2pi)^{-M/2} det(K)^{-1/2}
-                             exp(-0.5 (x-m)^T K^{-1} (x-m))
-        """
+    def _e_step(self, X, weights, means, chols, logdets):
+        """log(pi_k * phi_M(x_i; m_k, K_k)) for all i, k."""
         n, M = X.shape
         K = len(weights)
         log_prob = np.empty((n, K))
         const = -0.5 * M * np.log(2.0 * np.pi)
 
         for k in range(K):
-            diff = X - means[k]  # (n, M)
-            # solve L_k z = diff^T  =>  z = L_k^{-1} diff^T
+            diff = X - means[k]
             whitened = solve_triangular(chols[k], diff.T, lower=True).T
             quad = np.einsum("ij,ij->i", whitened, whitened)
             log_prob[:, k] = (
@@ -213,76 +183,51 @@ class ProjectedGaussianMixtureEM:
     # M-step
     # ------------------------------------------------------------------
 
-    def _m_step(
-        self,
-        X: np.ndarray,
-        resp: np.ndarray,
-        covariances: np.ndarray,
-        seed: int | None,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """M-step: update pi_k, m_k, and (optionally) K_k.
+    def _m_step(self, X, resp, covariances, seed):
+        """Update pi_k, m_k, and (unless fixed_covariance) K_k.
 
-        Full-covariance update (Algorithm 1, line 13):
-            K_k <- (1/N_k) sum_i r_{ik} (x_i - m_k)(x_i - m_k)^T + eps * I_M
-
-        Fixed-covariance variant: only weights and means are updated.
+        K_k <- (1/N_k) sum_i r_{ik} (x_i - m_k)(x_i - m_k)^T + eps * I_M
         """
         n, M = X.shape
         K = self.n_clusters
         rng = np.random.RandomState(seed)
 
-        masses = resp.sum(axis=0)  # N_k
+        masses = resp.sum(axis=0)
         weights = np.maximum(masses, 1e-12)
-        weights = weights / weights.sum()
+        weights /= weights.sum()
 
         means = np.empty((K, M))
-        new_covariances = covariances  # keep unchanged for fixed-cov mode
-
-        if not self.fixed_covariance:
-            new_covariances = np.empty((K, M, M))
+        new_covariances = np.empty((K, M, M)) if not self.fixed_covariance else None
 
         for k in range(K):
             if masses[k] <= 1e-8:
                 means[k] = X[rng.randint(0, n)]
-                if not self.fixed_covariance:
+                if new_covariances is not None:
                     new_covariances[k] = covariances[k]
             else:
                 means[k] = weighted_mean(X, resp[:, k])
-                if not self.fixed_covariance:
-                    centered = X - means[k]  # (n, M)
-                    # K_k = (1/N_k) sum_i r_{ik} (x_i - m_k)(x_i - m_k)^T
+                if new_covariances is not None:
+                    centered = X - means[k]
                     new_covariances[k] = (
-                        (centered * resp[:, k : k + 1]).T @ centered
-                        / masses[k]
+                        (centered * resp[:, k : k + 1]).T @ centered / masses[k]
                     )
-                    # + epsilon * I_M
+                    new_covariances[k] = 0.5 * (
+                        new_covariances[k] + new_covariances[k].T
+                    )
                     new_covariances[k].flat[:: M + 1] += self.reg_covar
 
         if self.fixed_covariance:
             return weights, means, covariances
-
-        # Symmetrise for numerical safety
-        for k in range(K):
-            new_covariances[k] = 0.5 * (
-                new_covariances[k] + new_covariances[k].T
-            )
         return weights, means, new_covariances
 
     # ------------------------------------------------------------------
     # Initialisation
     # ------------------------------------------------------------------
 
-    def _initialize(
-        self,
-        X: np.ndarray,
-        M: int,
-        seed: int | None,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Initialise weights, means, and per-component covariances."""
+    def _initialize(self, X, M, seed):
         K = self.n_clusters
         n = X.shape[0]
 
-        # --- Weights and means via K-means ---
         try:
             kmeans = KMeans(n_clusters=K, n_init=1, random_state=seed)
             labels = kmeans.fit_predict(X)
@@ -297,61 +242,32 @@ class ProjectedGaussianMixtureEM:
         counts = np.maximum(counts, 1.0)
         weights = counts / counts.sum()
 
-        # --- Covariances ---
         if self.fixed_covariance:
-            shared = self._build_fixed_covariance(X, M)
+            shared = self._empirical_covariance(X, M)
             covariances = np.tile(shared, (K, 1, 1))
         else:
-            # Initialise each K_k from within-cluster scatter + ridge
             covariances = np.empty((K, M, M))
             for k in range(K):
                 mask = labels == k
                 if mask.sum() < 2:
-                    # Fall back to global empirical covariance
-                    covariances[k] = self._build_fixed_covariance(X, M)
+                    covariances[k] = self._empirical_covariance(X, M)
                 else:
-                    cluster_data = X[mask]
-                    centered = cluster_data - means[k]
+                    centered = X[mask] - means[k]
                     covariances[k] = centered.T @ centered / centered.shape[0]
-                    covariances[k] = 0.5 * (
-                        covariances[k] + covariances[k].T
-                    )
+                    covariances[k] = 0.5 * (covariances[k] + covariances[k].T)
                     covariances[k].flat[:: M + 1] += self.reg_covar
 
         return weights, means, covariances
 
-    def _build_fixed_covariance(self, X: np.ndarray, M: int) -> np.ndarray:
-        """Build a shared covariance matrix for the fixed-covariance variant."""
-        if self.covariance is not None:
-            cov = np.asarray(self.covariance, dtype=float)
-        elif self.covariance_mode == "empirical":
-            centered = X - X.mean(axis=0, keepdims=True)
-            denom = max(X.shape[0] - 1, 1)
-            cov = centered.T @ centered / denom
-        elif self.covariance_mode == "diagonal_empirical":
-            cov = np.diag(X.var(axis=0) + self.reg_covar)
-        elif self.covariance_mode == "spherical_empirical":
-            scale = float(max(X.var(axis=0).mean(), self.reg_covar))
-            cov = scale * np.eye(M)
-        elif self.covariance_mode == "identity":
-            cov = np.eye(M)
-        else:
-            raise ValueError(f"Unknown covariance_mode: {self.covariance_mode}")
-
-        cov = np.asarray(cov, dtype=float)
+    def _empirical_covariance(self, X, M):
+        centered = X - X.mean(axis=0, keepdims=True)
+        cov = centered.T @ centered / max(X.shape[0] - 1, 1)
         cov = 0.5 * (cov + cov.T)
         cov.flat[:: M + 1] += self.reg_covar
         return cov
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-
     @staticmethod
-    def _cholesky_params(
-        covariances: np.ndarray,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Compute Cholesky factors and log-determinants for all components."""
+    def _cholesky_params(covariances):
         K = covariances.shape[0]
         chols = np.empty_like(covariances)
         logdets = np.empty(K)
@@ -361,25 +277,13 @@ class ProjectedGaussianMixtureEM:
         return chols, logdets
 
 
-# ---- Backward-compatible alias for the fixed-covariance-only class ----
-FixedCovarianceGaussianMixture = ProjectedGaussianMixtureEM
-
-
 class ProjectedGMMEMFixedCovarianceClustering:
-    """Clustering wrapper for the projected EM baseline.
-
-    When a *basis* is supplied the wrapper projects raw observations onto
-    the basis to obtain coefficient vectors in R^M, and the EM algorithm
-    operates in that coordinate space.  When no basis is given the input
-    is simply flattened.
-    """
+    """Clustering wrapper that projects onto a basis and runs EM."""
 
     def __init__(
         self,
         n_clusters: int,
         basis: HilbertBasis | None = None,
-        covariance_mode: str = "empirical",
-        covariance: np.ndarray | None = None,
         n_init: int = 3,
         max_iter: int = 200,
         tol: float = 1e-4,
@@ -393,8 +297,6 @@ class ProjectedGMMEMFixedCovarianceClustering:
         self.model = ProjectedGaussianMixtureEM(
             n_clusters=n_clusters,
             fixed_covariance=True,
-            covariance_mode=covariance_mode,
-            covariance=covariance,
             n_init=n_init,
             max_iter=max_iter,
             tol=tol,
@@ -403,7 +305,6 @@ class ProjectedGMMEMFixedCovarianceClustering:
         )
 
     def _project_data(self, X) -> np.ndarray:
-        """Project input data to coefficient space."""
         if self.basis is not None:
             X_tensor = X if torch.is_tensor(X) else torch.as_tensor(X)
             with torch.no_grad():
@@ -412,8 +313,7 @@ class ProjectedGMMEMFixedCovarianceClustering:
         return flatten_features(X)
 
     def fit(self, X):
-        X_np = self._project_data(X)
-        self.model.fit(X_np)
+        self.model.fit(self._project_data(X))
         self.labels_ = self.model.labels_
         self.responsibilities_ = self.model.responsibilities_
         return self
