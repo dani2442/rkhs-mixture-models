@@ -13,7 +13,7 @@ from src.kernel.base import Kernel
 from src.kernel.gaussian import GaussianKernel
 from src.kernel.polynomial import PolynomialKernel, LinearKernel, QuadraticKernel
 from src.spaces.base import HilbertBasis
-from src.spaces.L2 import L2Basis, L2CosineBasis, L2FourierBasis, L2TensorBasis2D
+from src.spaces.L2 import H1CosineBasis, L2Basis, L2CosineBasis, L2FourierBasis, L2TensorBasis2D
 from src.spaces.graph import GraphBasis, GraphLaplacianBasis
 from src.spaces.graph_embedding import WLHashFingerprint
 from src.spaces.Rn import CanonicalBasis, DiscreteCosineBasis
@@ -179,6 +179,7 @@ __all__ = [
     "QuadraticKernel",
     # Spaces
     "HilbertBasis",
+    "H1CosineBasis",
     "L2Basis",
     "L2CosineBasis",
     "L2FourierBasis",

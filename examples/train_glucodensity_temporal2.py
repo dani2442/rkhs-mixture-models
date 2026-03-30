@@ -69,6 +69,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--n-components", type=int, default=3)
     p.add_argument("--r-s", type=int, default=8, help="Cosine basis functions for intraday")
     p.add_argument("--n-time-bins", type=int, default=16, help="Number of temporal bins")
+    p.add_argument(
+        "--space-metric",
+        choices=["l2", "h1"],
+        default="l2",
+        help="Geometry for intraday curves before MMD fitting.",
+    )
     p.add_argument("--r-pi", type=int, default=6, help="Basis functions for pi(t) when model-type=basis")
     p.add_argument("--ode-hidden", type=int, default=64, help="NeuralODE hidden dim when model-type=ode")
 
@@ -99,6 +105,8 @@ def plot_best_model_summary(
     t_grid_days_np: np.ndarray,
     out_dir: str,
     model_name: str,
+    space_label: str,
+    filename_suffix: str,
     show: bool,
 ) -> str:
     """Single-model summary: training curve, pi(t), and mean glucose curves."""
@@ -142,10 +150,13 @@ def plot_best_model_summary(
     axes[2].legend(fontsize=8)
     axes[2].grid(alpha=0.3)
 
-    fig.suptitle("Best temporal glucodensity model", fontsize=13)
+    fig.suptitle(f"Best temporal glucodensity model ({space_label})", fontsize=13)
     plt.tight_layout()
 
-    out_path = os.path.join(out_dir, "glucodensity_best_model_summary.pdf")
+    out_path = os.path.join(
+        out_dir,
+        f"glucodensity_best_model_summary{filename_suffix}.pdf",
+    )
     fig.savefig(out_path, format="pdf", bbox_inches="tight")
     print(f"Saved figure: {out_path}")
 
@@ -174,7 +185,8 @@ def main() -> None:
     print("=" * 72)
     print(
         f"Config: model={args.model_type}, K={args.n_components}, r_s={args.r_s}, "
-        f"L_t={args.n_time_bins}, r_pi={args.r_pi}, ode_hidden={args.ode_hidden}, "
+        f"L_t={args.n_time_bins}, metric={args.space_metric}, "
+        f"r_pi={args.r_pi}, ode_hidden={args.ode_hidden}, "
         f"lr={args.lr}, sigma={args.sigma}, sigma_mult={args.sigma_mult}"
     )
 
@@ -205,6 +217,7 @@ def main() -> None:
         r_s=args.r_s,
         device=device,
         dtype=dtype,
+        space_metric=args.space_metric,
         verbose=True,
     )
 
@@ -306,6 +319,8 @@ def main() -> None:
         t_grid_days_np=t_grid_days_np,
         out_dir=out_dir,
         model_name=model_name,
+        space_label="L²" if args.space_metric == "l2" else "H¹",
+        filename_suffix="" if args.space_metric == "l2" else "_h1",
         show=not args.no_show,
     )
 
@@ -318,6 +333,11 @@ def main() -> None:
         n_time_bins=args.analysis_time_bins,
         include_difference_panel=False,
         out_dir=out_dir,
+        filename=(
+            "glucodensity_cluster_probs_by_group.pdf"
+            if args.space_metric == "l2"
+            else "glucodensity_cluster_probs_by_group_h1.pdf"
+        ),
         show=not args.no_show,
     )
 

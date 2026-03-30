@@ -157,6 +157,48 @@ class L2CosineBasis(L2Basis):
         return Phi
 
 
+class H1CosineBasis(L2CosineBasis):
+    """
+    Cosine basis reweighted to be orthonormal for H^1([0,T]; R^d).
+
+    We use the standard Sobolev inner product
+
+        <f, g>_{H^1} = <f, g>_{L^2} + <f', g'>_{L^2}.
+
+    If f = sum_r c_r phi_r in the L^2-orthonormal cosine basis, then
+
+        ||f||_{H^1}^2 = sum_r (1 + (r*pi/T)^2) c_r^2.
+
+    Returning coefficients scaled by sqrt(1 + (r*pi/T)^2) therefore makes the
+    Euclidean geometry in coefficient space match the H^1 norm.
+    """
+
+    def __init__(
+        self,
+        T: float,
+        R: int,
+        grid_size: int,
+        d: int = 1,
+        device: torch.device = torch.device("cpu"),
+        dtype: torch.dtype = torch.float64,
+    ):
+        super().__init__(T=T, R=R, grid_size=grid_size, d=d, device=device, dtype=dtype)
+        mode_idx = torch.arange(self.R, device=self.device, dtype=self.dtype)
+        mode_scale = torch.sqrt(1.0 + (mode_idx * math.pi / self.T) ** 2)
+        self.h1_mode_scale = mode_scale
+        self.h1_coeff_scale = mode_scale.repeat(self.d)
+
+    def project(self, X: torch.Tensor) -> torch.Tensor:
+        """Project sampled curves to H^1-orthonormal cosine coefficients."""
+        coeffs_l2 = super().project(X)
+        return coeffs_l2 * self.h1_coeff_scale.unsqueeze(0)
+
+    def reconstruct(self, coeffs: torch.Tensor) -> torch.Tensor:
+        """Reconstruct curves from H^1-orthonormal cosine coefficients."""
+        coeffs_l2 = coeffs / self.h1_coeff_scale.unsqueeze(0)
+        return super().reconstruct(coeffs_l2)
+
+
 class L2FourierBasis(L2Basis):
     """
     Orthonormal Fourier basis on L^2([0,T]; R^d).

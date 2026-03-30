@@ -1126,6 +1126,7 @@ def plot_cluster_probabilities_by_group(
     n_time_bins: int = 10,
     include_difference_panel: bool = True,
     out_dir: str = ".",
+    filename: str = "glucodensity_cluster_probs_by_group.pdf",
     show: bool = True,
 ) -> "plt.Figure":
     """
@@ -1329,7 +1330,7 @@ def plot_cluster_probabilities_by_group(
     plt.tight_layout()
 
     os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, "glucodensity_cluster_probs_by_group.pdf")
+    out_path = os.path.join(out_dir, filename)
     fig.savefig(out_path, format="pdf", bbox_inches="tight")
     print(f"Saved figure: {out_path}")
 
