@@ -116,7 +116,7 @@ def _train_mmd_gmm(X, basis, n_components, kernel, num_epochs, lr, base_seed, n_
     Train with multiple restarts; return labels from the run with highest
     assignment crispness (mean max-responsibility), skipping collapsed solutions.
 
-    Each restart initialises from a fresh sklearn K-means run (better than
+    Each restart initializes from a fresh sklearn K-means run (better than
     pure k-means++ seed selection because it gives per-cluster covariance init).
     """
     from sklearn.cluster import KMeans
