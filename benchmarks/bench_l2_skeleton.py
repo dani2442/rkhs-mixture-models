@@ -7,7 +7,6 @@ resamples to a fixed grid, projects onto L² cosine basis, and
 evaluates clustering quality via ARI against action labels.
 """
 
-import glob
 import os
 import random
 import sys
@@ -21,6 +20,7 @@ from sklearn.metrics import adjusted_rand_score
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from examples.train_ntu_skeleton import (
+    ensure_ntu_skeleton_data,
     resample_trajectory,
     skeleton_to_trajectory,
 )
@@ -128,12 +128,9 @@ def main():
     print(f"Benchmark: NTU Skeleton (K={N_COMPONENTS}, {N_RUNS} runs)")
     print("=" * 60)
 
-    skeleton_files = sorted(
-        glob.glob(str(DATA_ROOT / "**/*.skeleton"), recursive=True)
-    )
+    skeleton_files = ensure_ntu_skeleton_data(DATA_ROOT)
     if not skeleton_files:
-        print(f"No .skeleton files found under {DATA_ROOT}.")
-        print("Run  examples/download_ntu_skeleton.py  first.")
+        print(f"No .skeleton files found under {DATA_ROOT} after download.")
         raise SystemExit(1)
 
     by_action = _load_by_action(skeleton_files)

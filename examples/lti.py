@@ -10,15 +10,16 @@ The mean and covariance of the Gaussian component are obtained analytically
 from the current parameter estimates (they satisfy an ODE in time).
 """
 
+import os
+import sys
+
 import torch
 import torch.nn as nn
 import torchsde
-import matplotlib.pyplot as plt
-import sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import L2CosineBasis, GaussianKernel
+from src import L2CosineBasis
 
 
 # ──────────────────────────────────────────────
@@ -272,147 +273,3 @@ class TrainableLTI(nn.Module):
         )
 
 
-# ──────────────────────────────────────────────
-# 6.  Main script
-# ──────────────────────────────────────────────
-def main():
-    torch.manual_seed(0)
-    torch.set_default_dtype(torch.float64)
-
-    # --- dimensions ---
-    n, m, p = 4, 2, 2          # state, input, noise dims
-    R = 7                      # basis functions per spatial dim
-    T = 5.0
-    dt = 0.1
-    grid_size = int(T / dt) + 1
-    n_samples = 20
-
-    # --- true system ---
-    A_true = torch.randn(n, n)
-    A_true = A_true - (torch.linalg.eigvals(A_true).real.max().real + 0.5) * torch.eye(n)
-    B_true = torch.randn(n, m)
-    G_true = torch.randn(n, p)/n
-
-    m0 = torch.zeros(n)
-    Sigma0 = 0.1 * torch.eye(n)
-
-    def u_fn(t):
-        return torch.stack([torch.sin(t), torch.cos(2.0 * t)])
-
-    # --- sample paths ---
-    ts = torch.linspace(0.0, T, grid_size)
-    sde = LinearSDE(A_true, B_true, G_true, u_fn)
-    x0 = m0 + torch.randn(n_samples, n) @ torch.linalg.cholesky(Sigma0).T
-    paths = torchsde.sdeint(sde, x0, ts, dt=dt, method="euler", dt_min=0.05)  # (L, n_samples, n)
-    paths = paths.permute(1, 0, 2)  # (n_samples, L, n)
-
-    print(f"Sampled {n_samples} paths,  shape = {paths.shape}")
-
-    # --- project onto L² cosine basis ---
-    basis = L2CosineBasis(T, R, grid_size, d=n)
-    X_coeffs = basis.project(paths)  # (n_samples, M) with M = R*n
-    print(f"Coefficient dim M = {X_coeffs.shape[1]}")
-
-    # --- true projected Gaussian (for reference) ---
-    mu_true, Kcov_true = compute_projected_mean_cov(
-        A_true, B_true, G_true, m0, Sigma0, u_fn, basis,
-    )
-
-    # --- kernel ---
-    sigma_kernel = float(X_coeffs.std()) * 2.0
-    kernel = GaussianKernel(sigma=sigma_kernel)
-    print(f"Kernel bandwidth σ = {sigma_kernel:.4f}")
-
-    # --- trainable model ---
-    model = TrainableLTI(n, m, p, basis, u_fn, m0, Sigma0)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-2)
-
-    # --- training loop ---
-    n_epochs = 300
-    history = []
-
-    for epoch in range(n_epochs):
-        optimizer.zero_grad()
-
-        mu_est, Kcov_est = model.projected_gaussian()
-        loss = mmd2_empirical_vs_single_gaussian(X_coeffs, mu_est, Kcov_est, kernel)
-
-        loss.backward()
-        optimizer.step()
-
-        history.append(loss.item())
-        if (epoch + 1) % 20 == 0:
-            # spectral abscissa of current A
-            eigs = torch.linalg.eigvals(model.A.data).real.max().item()
-            print(f"Epoch {epoch+1:4d}/{n_epochs}  MMD² = {loss.item():.6e}  "
-                  f"max Re(λ(A)) = {eigs:.4f}")
-
-    # --- plots ---
-    fig, axes = plt.subplots(2, 2, figsize=(12, 9))
-
-    # (a) sample paths (first coordinate)
-    ax = axes[0, 0]
-    n_plot = min(30, n_samples)
-    cmap = plt.cm.Blues
-    for i in range(n_plot):
-        color = cmap(0.3 + 0.7 * i / max(n_plot - 1, 1))
-        ax.plot(ts.numpy(), paths[i, :, 0].numpy(), color=color,
-                alpha=0.6, linewidth=0.8)
-    ax.set_title("Sample paths (dim 0)")
-    ax.set_xlabel("t")
-
-    # (b) training loss
-    ax = axes[0, 1]
-    ax.semilogy(history)
-    ax.set_title("MMD² loss")
-    ax.set_xlabel("epoch")
-    ax.grid(True)
-
-    # (c) reconstructed mean vs true mean (first coordinate)
-    mu_est_final, Kcov_est_final = model.projected_gaussian()
-    mean_true_fn = basis.reconstruct(mu_true.unsqueeze(0)).squeeze(0)   # (L, n)
-    mean_est_fn = basis.reconstruct(mu_est_final.unsqueeze(0)).squeeze(0)
-
-    colors = plt.cm.tab10.colors
-    ax = axes[1, 0]
-    for q in range(n):
-        c = colors[q % len(colors)]
-        ax.plot(ts.numpy(), mean_true_fn[:, q].detach().numpy(),
-                color=c, linewidth=2.2, label=f"true dim {q}")
-        ax.plot(ts.numpy(), mean_est_fn[:, q].detach().numpy(),
-                color=c, linewidth=2.2, linestyle='--', alpha=0.7,
-                marker='x', markersize=4, markevery=5,
-                label=f"est dim {q}")
-    ax.set_title("Mean function")
-    ax.set_xlabel("t")
-    ax.legend(fontsize=7, ncol=2)
-
-    # (d) diagonal of covariance
-    ax = axes[1, 1]
-    diag_true = Kcov_true.diag().detach().numpy()
-    diag_est = Kcov_est_final.diag().detach().numpy()
-    ax.plot(diag_true, color='#1f77b4', linewidth=2, marker='o',
-            markersize=4, label='true')
-    ax.plot(diag_est, color='#1f77b4', linewidth=2, linestyle='--',
-            alpha=0.7, marker='x', markersize=5, label='estimated')
-    ax.set_title("Covariance diagonal")
-    ax.set_xlabel("coefficient index")
-    ax.legend()
-    ax.grid(True)
-
-    plt.tight_layout()
-    plt.savefig("lti_mmd_estimation.png", dpi=150)
-    plt.show()
-
-    # --- print comparison ---
-    print("\n--- True vs Estimated parameters ---")
-    print(f"A true:\n{A_true}")
-    print(f"A est:\n{model.A.data}")
-    print(f"\nB true:\n{B_true}")
-    print(f"B est:\n{model.B.data}")
-    print(f"\nG G^T true:\n{G_true @ G_true.T}")
-    print(f"G G^T est:\n{model.G.data @ model.G.data.T}")
-
-
-if __name__ == "__main__":
-    main()
