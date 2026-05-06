@@ -1,7 +1,6 @@
 """
 Sliding-window hourly graph-signal pipeline for glucodensity data:
-helpers used by the use_case_visualization and patient_correlation_network_graph
-notebooks.
+helpers used by the use_case_visualization notebook.
 """
 from typing import Tuple
 

@@ -1041,6 +1041,11 @@ T_ntu = 1.0
 
 DATA_ROOT = Path(project_root) / "data" / "ntu_rgbd_skeleton"
 files = sorted(glob.glob(str(DATA_ROOT / "**/*.skeleton"), recursive=True))
+if not files:
+    print(f"No skeleton files at {DATA_ROOT}; downloading NTU dataset ...")
+    from src.data import download_ntu_skeleton
+    download_ntu_skeleton(root=str(DATA_ROOT))
+    files = sorted(glob.glob(str(DATA_ROOT / "**/*.skeleton"), recursive=True))
 print(f"Found {len(files)} skeleton files")
 files = random.sample(files, min(n_samples_ntu, len(files)))
 
