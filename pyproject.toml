@@ -28,3 +28,8 @@ dependencies = [
     "torchsde>=0.2.6",
     "tqdm>=4.62.0,<5.0.0",
 ]
+
+[dependency-groups]
+dev = [
+    "cartopy>=0.25.0",
+]

@@ -66,7 +66,8 @@ def slots_to_hourly(day_matrix: np.ndarray) -> np.ndarray:
     n_days, n_slots = day_matrix.shape
     assert n_slots == 288
     reshaped = day_matrix.reshape(n_days, N_HOURS, SLOTS_PER_HOUR)
-    return np.nanmean(reshaped, axis=2)
+    with np.errstate(all="ignore"):
+        return np.nanmean(reshaped, axis=2)
 
 
 def _correlation_from_hourly(

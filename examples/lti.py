@@ -3,7 +3,7 @@ LTI system identification via MMD in L².
 
 We consider the SDE  dx = (Ax + Bu)dt + G dW  with Gaussian initial
 conditions, which produces a Gaussian process.  Given sample paths we
-estimate A, B, G by minimising MMD² between the empirical measure and a
+estimate A, B, G by minimizing MMD² between the empirical measure and a
 single‑component Gaussian in the coefficient space of an L² cosine basis.
 
 The mean and covariance of the Gaussian component are obtained analytically
@@ -256,7 +256,7 @@ class TrainableLTI(nn.Module):
         self.m0 = m0
         self.Sigma0 = Sigma0
 
-        # initialise at random stable A
+        # initialize at random stable A
         A_init = torch.randn(n, n)
         A_init = A_init - (torch.linalg.eigvals(A_init).real.max().item() + 0.5) * torch.eye(n)
         self.A = nn.Parameter(A_init)
