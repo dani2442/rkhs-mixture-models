@@ -1,8 +1,8 @@
 # Paper Build & Reproducibility
 
-This repository contains the code and LaTeX sources for *Random Objects in Hilbert Spaces via Kernel Mixture Gaussian Model*. The paper lives in [`paper/`](paper/), and the compiled artifact is [`paper/main.pdf`](paper/main.pdf).
+This repository contains the code and LaTeX sources for *Gaussian Mixture Models in Hilbert Spaces via Kernel Methods*. The paper lives in [`paper/`](paper/), and the compiled artifact is [`paper/main.pdf`](paper/main.pdf).
 
-The paper is reproducible from a clean checkout: scripts regenerate the reported tables, figures, and cached datasets, except for the PEDAP CGM file, which must be supplied under its data-use agreement.
+The repository ships only the executables needed to reproduce the paper: the benchmarks behind Table 1 and the scripts that generate every figure in the main text and appendix. The PEDAP CGM file must be supplied under its data-use agreement; everything else is generated or downloaded on first run.
 
 ## Setup
 
@@ -15,15 +15,41 @@ source .venv/bin/activate
 
 All reproducibility scripts use fixed seeds, CPU execution, and `torch.float64` unless noted. The full pipeline usually takes 2-4 hours on a modern laptop.
 
-## Build the PDF
+
+## End-to-End Recipe
 
 ```bash
+uv sync
+source .venv/bin/activate
+
+# Table 1 benchmarks
+python -m benchmarks.bench_rd_sklearn
+python -m benchmarks.bench_l2_realdata
+python -m benchmarks.bench_l2_glucodensity
+python -m benchmarks.bench_so3
+python -m benchmarks.bench_graph
+python -m benchmarks.table_generator
+
+# Main-text figures:
+# data overview panels, ablations, model_summary_v3.pdf, corr_ode_training.pdf,
+# and patient_graph.pdf
+python examples/paper_data_figure.py
+python -m benchmarks.ablation_l2
+python examples/use_case_visualization.py
+python examples/patient_correlation_network_graph.py
+
+# Supplemental figures:
+# rd_gmm_summary.pdf, l2_k5_summary.pdf, l2_2d_k3_summary.pdf, so3_summary.pdf,
+# graph_summary.pdf, lti_summary.pdf, atomic_qm9_representatives.pdf,
+# and ntu_representatives.pdf
+python examples/paper_synthetic_experiments.py
+
+# Build the paper
 cd paper
 latexmk -r latexmkrc main.tex
-latexmk -C   # optional cleanup
+cd ..
 ```
 
-The NeurIPS style file, bibliography, and latexmk config are committed in [`paper/`](paper/).
 
 ## Data
 
@@ -36,38 +62,28 @@ The NeurIPS style file, bibliography, and latexmk config are committed in [`pape
 
 ## Reproduce the Paper
 
-| Output | Command |
+### Table 1 (clustering benchmark)
+
+The five benchmarks below populate the columns of Table 1 (`tab:unified_benchmark`). Each writes a JSON file under [`benchmarks/results/`](benchmarks/results/); [`benchmarks/table_generator.py`](benchmarks/table_generator.py) assembles them into a LaTeX table.
+
+| Column | Command |
 |---|---|
-| Clustering benchmark table | Run the benchmark commands below |
-| Ablation figures | `python -m benchmarks.ablation_l2` |
-| Glucodensity case-study figures | `python examples/train_glucodensity_temporal.py`; `python examples/train_glucodensity_correlation.py`; `python examples/train_glucodensity_correlation_graph.py` |
-| Synthetic appendix figures | `jupyter nbconvert --to notebook --execute examples/paper_synthetic_experiments.ipynb --inplace` |
-| Intro data overview | `jupyter nbconvert --to notebook --execute examples/paper_data_figure.ipynb --inplace` |
-| Polished glucodensity figures | Execute [`examples/use_case_visualization.ipynb`](examples/use_case_visualization.ipynb) and [`examples/patient_correlation_network_graph.ipynb`](examples/patient_correlation_network_graph.ipynb) |
+| $\mathbb{R}^d$ | `python -m benchmarks.bench_rd_sklearn` |
+| $L^2$ | `python -m benchmarks.bench_l2_realdata` |
+| CGM (Gluco.) | `python -m benchmarks.bench_l2_glucodensity` |
+| $\mathrm{SO}(3)$ | `python -m benchmarks.bench_so3` |
+| Molecular | `python -m benchmarks.bench_graph` |
 
-The clustering table is assembled from JSON files in [`benchmarks/results/`](benchmarks/results/) and written to [`paper/sections/table_benchmark.tex`](paper/sections/table_benchmark.tex):
+### Figures
 
+| Figure(s) | Command |
+|---|---|
+| Ablation figures (`ablation_consistency.pdf`, `ablation_loss_K.pdf`, `ablation_k_sigma.pdf`) | `python -m benchmarks.ablation_l2` |
+| Intro data overview (`images/data/data_overview_cgm_hourly_family.pdf`, `images/data/data_overview_fixed_graph_signal.pdf`, `images/data/data_overview_sym10_matrix.pdf`) | `python examples/paper_data_figure.py` |
+| Synthetic appendix figures (`images/synthetic/rd_gmm_summary.pdf`, `images/synthetic/l2_k5_summary.pdf`, `images/synthetic/l2_2d_k3_summary.pdf`, `images/synthetic/so3_summary.pdf`, `images/synthetic/graph_summary.pdf`, `images/synthetic/lti_summary.pdf`, `images/synthetic/atomic_qm9_representatives.pdf`, `images/synthetic/ntu_representatives.pdf`) | `python examples/paper_synthetic_experiments.py` |
+| Glucodensity case-study figures (`model_summary_v3.pdf`, `corr_ode_training.pdf`) | `python examples/use_case_visualization.py` |
+| Patient similarity graph (`patient_graph.pdf`) | `python examples/patient_correlation_network_graph.py` |
 
-## End-to-End Recipe
+The figure scripts are converted from Jupyter notebooks; they import shared training/preprocessing helpers (`train_glucodensity_*.py`, `train_atomic.py`, `train_ntu_skeleton.py`, `lti.py`) from [`examples/`](examples/).
 
-```bash
-uv sync
-source .venv/bin/activate
-
-for b in bench_rd_sklearn bench_l2_synthetic bench_l2_realdata \
-         bench_l2_glucodensity bench_l2_skeleton bench_so3 bench_graph; do
-    python -m benchmarks.$b
-done
-
-python -m benchmarks.ablation_l2
-python examples/train_glucodensity_temporal.py
-python examples/train_glucodensity_correlation.py
-python examples/train_glucodensity_correlation_graph.py
-
-jupyter nbconvert --to notebook --execute examples/paper_synthetic_experiments.ipynb --inplace
-jupyter nbconvert --to notebook --execute examples/paper_data_figure.ipynb --inplace
-jupyter nbconvert --to notebook --execute examples/use_case_visualization.ipynb --inplace
-jupyter nbconvert --to notebook --execute examples/patient_correlation_network_graph.ipynb --inplace
-
-```
 
