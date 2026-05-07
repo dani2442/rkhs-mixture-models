@@ -59,7 +59,7 @@ python examples/paper_synthetic_experiments.py
 | Synthetic, sklearn toy datasets | Generated or bundled |
 | Growth, Phoneme, Kneading, ECG200 | Downloaded on first run |
 | MUTAG, QM9, TMQM, NTU RGB+D skeletons | Downloaded and cached under [`data/`](data/) |
-| PEDAP CGM | Manual: place `cgm_all_patients.csv` at `data/glucodensities/` |
+| PEDAP CGM | Static `cgm_all_patients.csv` at `data/glucodensities/` |
 
 ## Reproduce the Paper
 
