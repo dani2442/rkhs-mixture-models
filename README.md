@@ -8,13 +8,26 @@ The repository ships only the executables needed to reproduce the paper: the ben
 
 Requires Python >= 3.11. All reproducibility scripts use fixed seeds, CPU execution, and `torch.float64` unless noted. The full pipeline usually takes 2-4 hours on a modern laptop.
 
-
-## End-to-End Recipe
+Install the project environment with `uv`:
 
 ```bash
 uv sync
 source .venv/bin/activate
+```
 
+Or with `pip`:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e .
+```
+
+
+## End-to-End Recipe
+
+```bash
 # Table 1 benchmarks
 python -m benchmarks.bench_rd_sklearn
 python -m benchmarks.bench_l2_realdata
@@ -34,6 +47,7 @@ python examples/use_case_visualization.py
 # rd_gmm_summary.pdf, l2_k5_summary.pdf, l2_2d_k3_summary.pdf, so3_summary.pdf,
 # graph_summary.pdf, lti_summary.pdf, atomic_qm9_representatives.pdf,
 # and ntu_representatives.pdf
+# (Optional) This might take a while
 python examples/paper_synthetic_experiments.py
 ```
 
@@ -69,6 +83,5 @@ The five benchmarks below populate the columns of Table 1 (`tab:unified_benchmar
 | Intro data overview (`images/data/data_overview_cgm_hourly_family.pdf`, `images/data/data_overview_fixed_graph_signal.pdf`, `images/data/data_overview_sym10_matrix.pdf`) | `python examples/paper_data_figure.py` |
 | Synthetic appendix figures (`images/synthetic/rd_gmm_summary.pdf`, `images/synthetic/l2_k5_summary.pdf`, `images/synthetic/l2_2d_k3_summary.pdf`, `images/synthetic/so3_summary.pdf`, `images/synthetic/graph_summary.pdf`, `images/synthetic/lti_summary.pdf`, `images/synthetic/atomic_qm9_representatives.pdf`, `images/synthetic/ntu_representatives.pdf`) | `python examples/paper_synthetic_experiments.py` |
 | Glucodensity case-study figures (`model_summary_v3.pdf`, `corr_ode_training.pdf`, `patient_graph.pdf`) | `python examples/use_case_visualization.py` |
-
 
 
