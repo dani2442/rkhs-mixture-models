@@ -2,7 +2,7 @@
 
 > **Fitting Gaussian mixtures to infinite-dimensional data via Maximum Mean Discrepancy (MMD)**
 
-This repository implements the framework described in *"Random Objects in Hilbert Spaces via Kernel Mixture Gaussian Model"* (NeurIPS 2026). It provides a modular, PyTorch-based toolkit for fitting Gaussian mixture models to data living in separable Hilbert spaces—function spaces, rotation groups, graph signal spaces, and more—using closed-form MMD optimization instead of likelihood-based methods.
+This repository implements the framework described in *"Random Objects in Hilbert Spaces via Kernel Mixture Gaussian Model"*. It provides a modular, PyTorch-based toolkit for fitting Gaussian mixture models to data living in separable Hilbert spaces—function spaces, rotation groups, graph signal spaces, and more—using closed-form MMD optimization instead of likelihood-based methods.
 
 ---
 
@@ -12,16 +12,15 @@ Classical Gaussian mixture models (GMMs) rely on evaluating probability densitie
 
 This package sidesteps the problem entirely by using the **Maximum Mean Discrepancy (MMD)**, a kernel-based distance between probability measures that requires no densities. Given:
 
-- An empirical distribution $P = \frac{1}{n}\sum_{i=1}^{n} \delta_{X_i}$ from data
-- A Gaussian mixture $Q = \sum_{k=1}^{K} \pi_k \, \mathcal{N}(m_k, \mathcal{K}_k)$
+- An empirical distribution $P_n = \frac{1}{n}\sum_{i=1}^{n} \delta_{X_i}$ from data
+- A Gaussian mixture $Q_\theta = \sum_{k=1}^{K} \pi_k \, \mathcal{N}(m_k, \mathcal{K}_k)$
 
-We fit the mixture by minimizing $\text{MMD}^2(P, Q)$, which admits **exact closed-form evaluation** for Gaussian and polynomial kernels—no sampling from $Q$ is needed.
+We fit the mixture by minimizing $\text{MMD}^2(P_n, Q_\theta)$, which admits **exact closed-form evaluation** for Gaussian and polynomial kernels—no sampling from $Q_\theta$ is needed.
 
 ### How It Works
 
 1. **Project** data from the Hilbert space onto a finite-dimensional orthonormal basis (cosine, Fourier, graph Laplacian eigenvectors, Wigner D-matrices, etc.)
-2. **Compute** the MMD² objective using closed-form expressions for the kernel expectations 
-$$J_{i,k} = \mathbb{E}_{y \sim \nu_k}[\kappa(X_i, y)] \quad \text{and} \quad I_{k,s} = \mathbb{E}_{y \sim \nu_k, y' \sim \nu_s}[\kappa(y, y')]$$
+2. **Compute** the MMD² objective using closed-form expressions.
 3. **Optimize** mixture parameters (weights, means, covariances) via gradient descent on the differentiable MMD² loss
 
 All quantities converge to their infinite-dimensional counterparts as the truncation dimension $M \to \infty$.
@@ -174,10 +173,31 @@ src/
     ├── graph.py             # Graph Laplacian eigenbasis
     └── graph_embedding.py   # WL hash fingerprint for molecular graphs
 ```
+## Mathematical Background
 
-### Core Components
+The MMD² between the empirical measure $P$ and the Gaussian mixture $Q$ decomposes as:
 
-#### Kernels (`src/kernel/`)
+$$
+\text{MMD}^2(P_n, Q_\theta) = \underbrace{\frac{1}{n^2} \sum_{i,j} \kappa(X_i, X_j)}_{\text{data–data (constant)}} - \frac{2}{n} \sum_{i=1}^{n} \sum_{k=1}^{K} \pi_k J_{i,k} + \sum_{k,s=1}^{K} \pi_k \pi_s I_{k,s}
+$$
+
+For the **Gaussian kernel** $\kappa(x, y) = \exp\!\left(-\|x-y\|^2 / (2\sigma^2)\right)$, writing $\alpha = -1/(2\sigma^2)$:
+
+$$
+J_{i,k} = \text{det}(I - 2\alpha K_k)^{-1/2} \exp\left(\alpha (X_i - m_k)^\top (I - 2\alpha K_k)^{-1} (X_i - m_k)\right)
+$$
+
+$$
+I_{k,s} = \text{det}(I - 2\alpha (K_k + K_s))^{-1/2} \exp\!\left(\alpha (m_k - m_s)^\top (I - 2\alpha (K_k + K_s))^{-1} (m_k - m_s)\right)
+$$
+
+Both expressions are differentiable and computed exactly via Cholesky decompositions—no Monte Carlo estimation needed.
+
+
+
+## Core Components
+
+### Kernels (`src/kernel/`)
 
 Each kernel implements three operations needed for the MMD computation:
 
@@ -190,7 +210,7 @@ Each kernel implements three operations needed for the MMD computation:
 **Gaussian kernel**: Uses Fredholm determinants and Cholesky-based solves for $J$ and $I$.
 **Polynomial kernel**: Uses moment formulas for Gaussian random variables.
 
-#### Hilbert Bases (`src/spaces/`)
+### Hilbert Bases (`src/spaces/`)
 
 Each basis provides `project()` (data → coefficients) and optionally `reconstruct()` (coefficients → data):
 
@@ -204,7 +224,7 @@ Each basis provides `project()` (data → coefficients) and optionally `reconstr
 | `CanonicalBasis` | $\mathbb{R}^n$ | Identity / truncation |
 | `DiscreteCosineBasis` | $\mathbb{R}^n$ | DCT-II transform |
 
-#### Gaussian Mixture Model (`src/mixture.py`)
+### Gaussian Mixture Model (`src/mixture.py`)
 
 `GaussianMixtureModel` is a `torch.nn.Module` with:
 - Mixture weights via softmax-parameterized logits (simplex constraint)
@@ -213,31 +233,7 @@ Each basis provides `project()` (data → coefficients) and optionally `reconstr
 - Methods: `compute_mmd2()`, `sample()`, `sample_functions()`, `log_likelihood()`, `responsibilities()`
 
 
-## Mathematical Background
 
-The MMD² between the empirical measure $P$ and the Gaussian mixture $Q$ decomposes as:
-
-$$
-\text{MMD}^2(P, Q) = \underbrace{\frac{1}{n^2} \sum_{i,j} \kappa(X_i, X_j)}_{\text{data–data (constant)}} - \frac{2}{n} \sum_{i=1}^{n} \sum_{k=1}^{K} \pi_k J_{i,k} + \sum_{k,s=1}^{K} \pi_k \pi_s I_{k,s}
-$$
-
-For the **Gaussian kernel** $\kappa(x, y) = \exp\!\left(-\|x-y\|^2 / (2\sigma^2)\right)$, writing $\alpha = -1/(2\sigma^2)$:
-
-$$
-J_{i,k} = \det(I - 2\alpha K_k)^{-1/2} \exp\!\left\{\alpha (X_i - m_k)^\top (I - 2\alpha K_k)^{-1} (X_i - m_k)\right\}
-$$
-
-$$
-I_{k,s} = \det(I - 2\alpha (K_k + K_s))^{-1/2} \exp\!\left\{\alpha (m_k - m_s)^\top (I - 2\alpha (K_k + K_s))^{-1} (m_k - m_s)\right\}
-$$
-
-Both expressions are differentiable and computed exactly via Cholesky decompositions—no Monte Carlo estimation needed.
-
-With fixed component parameters, the weight optimization reduces to a **convex quadratic program** on the simplex, admitting the closed-form solution:
-
-$$
-\pi^* = I^{-1} J - \frac{\mathbf{1}^\top I^{-1} J - 1}{\mathbf{1}^\top I^{-1} \mathbf{1}} I^{-1} \mathbf{1}
-$$
 
 
 ## Configuration Reference
@@ -295,10 +291,16 @@ All runs are CPU-only and complete in minutes on a standard laptop.
 ## Citation
 
 ```bibtex
-@inproceedings{mixture2026,
-  title   = {Random Objects in Hilbert Spaces via Kernel Mixture Gaussian Model},
-  year    = {2026},
-  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+@misc{mixture2026,
+  title         = {Gaussian Mixture Models in Hilbert Spaces via Kernel Methods},
+  author        = {L{\'o}pez-Montero, Daniel and {\'A}lvarez-L{\'o}pez, Antonio and Matabuena, Marcos},
+  year          = {2026},
+  month         = may,
+  eprint        = {2605.05996},
+  archivePrefix = {arXiv},
+  primaryClass  = {stat.ML},
+  doi           = {10.48550/arXiv.2605.05996},
+  url           = {https://arxiv.org/abs/2605.05996}
 }
 ```
 
