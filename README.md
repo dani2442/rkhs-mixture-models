@@ -2,7 +2,7 @@
 
 > **Fitting Gaussian mixtures to infinite-dimensional data via Maximum Mean Discrepancy (MMD)**
 
-This repository implements the framework described in *"Random Objects in Hilbert Spaces via Kernel Mixture Gaussian Model"*. It provides a modular, PyTorch-based toolkit for fitting Gaussian mixture models to data living in separable Hilbert spaces—function spaces, rotation groups, graph signal spaces, and more—using closed-form MMD optimization instead of likelihood-based methods.
+This repository implements the framework described in *"Gaussian Mixture Models in Hilbert Spaces via Kernel Methods"*. It provides a modular, PyTorch-based toolkit for fitting Gaussian mixture models to data living in separable Hilbert spaces—function spaces, rotation groups, graph signal spaces, and more—using closed-form MMD optimization instead of likelihood-based methods.
 
 ---
 
@@ -55,19 +55,6 @@ git clone https://github.com/dani2442/rkhs-mixture-models.git mixture
 cd mixture
 uv sync
 ```
-
-### Dependencies
-
-Core dependencies (installed automatically):
-- `torch` (< 2.0), `numpy`, `scipy`, `scikit-learn`
-- `matplotlib`, `tqdm`
-
-For molecular experiments:
-- `torch-geometric`, `rdkit`, `atomic-datasets`
-
-For temporal mixture models:
-- `torchdiffeq`
-
 
 ## Quick Start
 
