@@ -32,8 +32,10 @@ All quantities converge to their infinite-dimensional counterparts as the trunca
 - **Multiple kernels**: Gaussian (RBF) and polynomial kernels with full closed-form expressions
 - **Diverse Hilbert spaces**:
   - $L^2([0,T]; \mathbb{R}^d)$ — functional/time-series data (cosine and Fourier bases)
+  - $H^1([0,T]; \mathbb{R}^d)$ — Sobolev space (cosine basis)
   - $L^2([0,T]^2; \mathbb{R}^d)$ — 2D spatial data (tensor product bases)
   - $L^2(\text{SO}(3))$ — rotation data (Wigner D-matrix basis via Peter-Weyl theorem)
+  - $\text{Sym}(n)$ — symmetric matrices with the Frobenius inner product (scaled vech embedding, optional PCA)
   - Graph signals — signals on graph vertices (Laplacian eigenbasis)
   - $\mathbb{R}^n$ — finite-dimensional vectors (canonical and DCT bases)
 - **Flexible covariance**: Diagonal, spherical, and full (Cholesky) covariance parameterizations
@@ -165,13 +167,17 @@ src/
 │   ├── base.py              # Abstract Kernel class (J, I expectations)
 │   ├── gaussian.py          # Gaussian (RBF) kernel with closed-form J, I
 │   └── polynomial.py        # Polynomial kernel with moment-based J, I
-└── spaces/
-    ├── base.py              # Abstract HilbertBasis class
-    ├── L2.py                # L² bases: cosine, Fourier, 2D tensor product
-    ├── Rn.py                # R^n bases: canonical, discrete cosine transform
-    ├── so3.py               # SO(3) basis via Wigner D-matrices
-    ├── graph.py             # Graph Laplacian eigenbasis
-    └── graph_embedding.py   # WL hash fingerprint for molecular graphs
+├── spaces/
+│   ├── base.py              # Abstract HilbertBasis class
+│   ├── L2.py                # L² and H¹ bases: cosine, Fourier, 2D tensor product
+│   ├── Rn.py                # R^n bases: canonical, discrete cosine transform
+│   ├── so3.py               # SO(3) bases via Wigner D-matrices
+│   ├── symmetric.py         # Sym(n) with Frobenius inner product (vech + optional PCA)
+│   ├── graph.py             # Graph Laplacian eigenbasis
+│   └── graph_embedding.py   # WL hash fingerprint for molecular graphs
+└── competitors/             # Baseline clustering methods used in benchmarks
+                             # (functional k-means, funHDDC, kernel k-groups,
+                             #  projected GMM-EM, scikit-fda agglomerative, ...)
 ```
 ## Mathematical Background
 
@@ -207,8 +213,8 @@ Each kernel implements three operations needed for the MMD computation:
 | `compute_J(X, m, Kcov)` | $J_{i,k} = \mathbb{E}_{y \sim \mathcal{N}(m_k, K_k)}[\kappa(X_i, y)]$ | Data-component cross-expectation |
 | `compute_I(m, Kcov)` | $I_{k,s} = \mathbb{E}_{y \sim \mathcal{N}(m_k,K_k),\, y' \sim \mathcal{N}(m_s,K_s)}[\kappa(y, y')]$ | Component-component cross-expectation |
 
-**Gaussian kernel**: Uses Fredholm determinants and Cholesky-based solves for $J$ and $I$.
-**Polynomial kernel**: Uses moment formulas for Gaussian random variables.
+**Gaussian kernel** (`GaussianKernel`): Uses Fredholm determinants and Cholesky-based solves for $J$ and $I$.
+**Polynomial kernel** (`PolynomialKernel`, plus the `LinearKernel` and `QuadraticKernel` shortcuts): Uses moment formulas for Gaussian random variables.
 
 ### Hilbert Bases (`src/spaces/`)
 
@@ -218,8 +224,10 @@ Each basis provides `project()` (data → coefficients) and optionally `reconstr
 |-------|-------|------------|
 | `L2CosineBasis` | $L^2([0,T]; \mathbb{R}^d)$ | $c_r = \int_0^T f(t) \phi_r(t) \, dt$ via quadrature |
 | `L2FourierBasis` | $L^2([0,T]; \mathbb{R}^d)$ | Fourier sin/cos basis |
+| `H1CosineBasis` | $H^1([0,T]; \mathbb{R}^d)$ | Cosine basis orthonormal w.r.t. the $H^1$ inner product |
 | `L2TensorBasis2D` | $L^2([0,T]^2; \mathbb{R}^d)$ | Tensor product of 1D bases |
-| `SO3Basis` | $L^2(\text{SO}(3))$ | Wigner D-matrix evaluations |
+| `SO3Basis` / `SO3FourierBasis` | $L^2(\text{SO}(3))$ | Wigner D-matrix evaluations |
+| `SymmetricMatrixBasis` | $\text{Sym}(n)$ with Frobenius inner product | Scaled vech embedding (optional PCA) |
 | `GraphLaplacianBasis` | $\mathbb{R}^{\|V\|}$ with Laplacian geometry | Graph Fourier transform |
 | `CanonicalBasis` | $\mathbb{R}^n$ | Identity / truncation |
 | `DiscreteCosineBasis` | $\mathbb{R}^n$ | DCT-II transform |
@@ -266,6 +274,24 @@ Each basis provides `project()` (data → coefficients) and optionally `reconstr
 | `c` | `float` | Constant term $c \geq 0$ |
 
 ---
+
+## Benchmarks
+
+The `benchmarks/` directory compares the MMD Gaussian mixture against classical clustering baselines (k-means, hierarchical, fuzzy c-means, funHDDC, kernel k-groups, projected GMM-EM, ...). Entry points:
+
+| Script | What it benchmarks |
+|--------|--------------------|
+| [`benchmarks/bench_l2_synthetic.py`](benchmarks/bench_l2_synthetic.py) | Synthetic $L^2([0,1]; \mathbb{R}^d)$ datasets |
+| [`benchmarks/bench_l2_realdata.py`](benchmarks/bench_l2_realdata.py) | Real functional datasets (e.g. `aeon` / `cfda`) |
+| [`benchmarks/bench_l2_glucodensity.py`](benchmarks/bench_l2_glucodensity.py) | CGM glucodensity curves |
+| [`benchmarks/bench_l2_skeleton.py`](benchmarks/bench_l2_skeleton.py) | NTU RGB+D skeleton sequences |
+| [`benchmarks/bench_so3.py`](benchmarks/bench_so3.py) | SO(3) rotation data |
+| [`benchmarks/bench_graph.py`](benchmarks/bench_graph.py) | Graph signals on Erdős–Rényi graphs |
+| [`benchmarks/bench_rd_sklearn.py`](benchmarks/bench_rd_sklearn.py) | $\mathbb{R}^d$ sklearn-style toy datasets |
+| [`benchmarks/ablation_l2.py`](benchmarks/ablation_l2.py) | Ablations: dimension $M$, sample size $n$, components $K$, bandwidth |
+
+Run individual benchmarks directly, or use [`benchmarks/runner.py`](benchmarks/runner.py) and [`benchmarks/table_generator.py`](benchmarks/table_generator.py) to aggregate results into the paper tables.
+
 
 ## Reproducibility
 
