@@ -51,7 +51,7 @@ All quantities converge to their infinite-dimensional counterparts as the trunca
 Requires Python ≥ 3.11.
 
 ```bash
-git clone https://github.com/dani2442/continuous_GMM.git mixture
+git clone https://github.com/dani2442/rkhs-mixture-models.git mixture
 cd mixture
 uv sync
 ```
