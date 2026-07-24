@@ -188,6 +188,18 @@ METHOD_REGISTRY = OrderedDict(
             "citation_title": "Wavelet-Based Clustering for Mixed-Effects Functional Models in High Dimension",
             "citation_doi": "10.1111/j.1541-0420.2012.01828.x",
         },
+        # Consensus over P univariate GMMs, then spectral clustering of the
+        # n x n co-association matrix -> O(n^2) memory, O(n^3) for the eigensolve.
+        "GPmix": {
+            "space": r"$L^2$",
+            "train": r"$O(Pn K + n^3)$",
+            "infer": "---",
+            "memory": r"$O(n^2)$",
+            "benchmarks": ["l2", "l2_real", "glucodensity", "skeleton"],
+            "citation_key": "akewejeGPmixModelbasedClustering2024",
+            "citation_title": "GPmix: Model-based Clustering of Functional Data via Gaussian Processes",
+            "citation_doi": None,
+        },
         # --- Feature-based competitors on projected coefficients/embeddings ---
         # "Feature K-Means": {
         #     "space": "Feature",

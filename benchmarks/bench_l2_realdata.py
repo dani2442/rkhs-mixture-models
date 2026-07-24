@@ -32,6 +32,7 @@ from src import (
 )
 from src.competitors import (
     DBSCANClustering,
+    GPmixClustering,
     HDBSCANClustering,
     HierarchicalClustering,
     KCenterClustering,
@@ -235,6 +236,7 @@ def main():
         "HDBSCAN": [],
         "K-Center": [],
         "Kernel k-Groups": [],
+        "GPmix": [],
     }
 
     use_functional = False
@@ -334,6 +336,7 @@ def main():
             ("HDBSCAN", HDBSCANClustering(min_cluster_size=hdbscan_min_cluster_size)),
             ("K-Center", KCenterClustering(n_clusters=K)),
             ("Kernel k-Groups", KernelKGroupsClustering(n_clusters=K)),
+            ("GPmix", GPmixClustering(n_clusters=K, random_state=SEED)),
         ]
 
         if use_functional:
@@ -365,6 +368,10 @@ def main():
                     pred = method.fit_predict(X, basis=basis)
                 elif name in _uses_dist:
                     pred = method.fit_predict(X, dist_matrix=dist_matrix)
+                elif name == "GPmix":
+                    # GPmix does its own smoothing/projection, so it takes the
+                    # raw curves on the grid rather than the cosine coefficients.
+                    pred = method.fit_predict(X_np)
                 else:
                     pred = method.fit_predict(X)
 

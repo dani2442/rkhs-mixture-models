@@ -1,0 +1,26 @@
+{
+  "(a) separated isotropic": {
+    "kmeans_ari": 1.0,
+    "mmd_gmm_ari": 1.0,
+    "bayes_ari": 1.0,
+    "ari_confident_half": 1.0,
+    "ari_unconfident_half": 1.0,
+    "mean_confidence": 1.0
+  },
+  "(b) equal mean, different covariance": {
+    "kmeans_ari": 0.001544407025275674,
+    "mmd_gmm_ari": 0.6501276660578483,
+    "bayes_ari": 0.7564935189810169,
+    "ari_confident_half": 1.0,
+    "ari_unconfident_half": 0.37398871565004344,
+    "mean_confidence": 0.8825454701587292
+  },
+  "(c) concentric, different scale": {
+    "kmeans_ari": 0.11028592647604901,
+    "mmd_gmm_ari": 0.42165275507943606,
+    "bayes_ari": 1.0,
+    "ari_confident_half": 1.0,
+    "ari_unconfident_half": 0.08842038756680848,
+    "mean_confidence": 0.9574442092907136
+  }
+}

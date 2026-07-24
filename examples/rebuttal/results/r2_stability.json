@@ -1,0 +1,20 @@
+{
+  "M": 30,
+  "K": 4,
+  "n": 400,
+  "sigma": 45.921049234640904,
+  "cond_A_max": 1.0055718566359058,
+  "cond_A_min": 1.0006751866560128,
+  "cond_cov_max": 1817486.0434021633,
+  "min_eig_A": 1.0000000005627296,
+  "final_mmd2_full": 2.350071843792989e-07,
+  "resid_cholesky_max": 1.7763568394002505e-15,
+  "resid_explicit_inv_max": 2.6645352591003757e-15,
+  "stress_cond_cov": 10000000000.0,
+  "stress_cond_A": 1.0004742162095508,
+  "stress_cholesky_ok": true,
+  "time_diag_s": 6.259575169000527,
+  "final_mmd2_diag": 0.0003075936796279599,
+  "chol_per_iter_full": "K + K^2 = 20 (each 30x30)",
+  "chol_per_iter_diag": 0
+}
