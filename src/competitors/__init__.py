@@ -8,6 +8,7 @@ from .feature_gaussian_mixture import FeatureGaussianMixtureClustering
 from .feature_hddc import FeatureHDDCClustering
 from .feature_kmeans import FeatureKMeansClustering
 from .funclust import FunclustClustering
+from .gpmix import GPmixClustering
 from .funhddc import FunHDDCClustering
 from .k_centres import KCentresClustering
 from .kernel_kgroups import KernelKGroupsClustering
@@ -42,4 +43,5 @@ __all__ = [
     "FclustClustering",
     "KCentresClustering",
     "CurvclustClustering",
+    "GPmixClustering",
 ]

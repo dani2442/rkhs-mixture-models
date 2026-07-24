@@ -1,0 +1,82 @@
+{
+  "Growth": {
+    "exact": {
+      "n_steps": 300,
+      "n_increases": 0,
+      "max_increase": -4.548634258139117e-08,
+      "rel_decrease": 0.3460249094948585,
+      "grad_norm_first": 0.06263680236233833,
+      "grad_norm_last": 3.508893829615078e-05,
+      "ari": 0.5783167446922906
+    },
+    "adam": {
+      "n_steps": 400,
+      "n_increases": 5,
+      "max_increase": 0.0007199914705229293
+    }
+  },
+  "Waveform": {
+    "exact": {
+      "n_steps": 300,
+      "n_increases": 0,
+      "max_increase": -9.664121061181419e-07,
+      "rel_decrease": 0.11728849341165219,
+      "grad_norm_first": 0.05020920713635113,
+      "grad_norm_last": 0.00012234976552128325,
+      "ari": 0.2502633178342305
+    },
+    "adam": {
+      "n_steps": 400,
+      "n_increases": 10,
+      "max_increase": 0.0005006378292343738
+    }
+  },
+  "Phoneme": {
+    "exact": {
+      "n_steps": 300,
+      "n_increases": 0,
+      "max_increase": -8.580520605150355e-08,
+      "rel_decrease": 0.1178821303144421,
+      "grad_norm_first": 0.02652116641531343,
+      "grad_norm_last": 2.9435843290263498e-05,
+      "ari": 0.5886995592507062
+    },
+    "adam": {
+      "n_steps": 400,
+      "n_increases": 8,
+      "max_increase": 0.0004725949028154819
+    }
+  },
+  "Kneading": {
+    "exact": {
+      "n_steps": 300,
+      "n_increases": 0,
+      "max_increase": -3.281604210592093e-07,
+      "rel_decrease": 0.13216893821646158,
+      "grad_norm_first": 0.04251312308009786,
+      "grad_norm_last": 6.447885133662959e-05,
+      "ari": 0.3642152714233959
+    },
+    "adam": {
+      "n_steps": 400,
+      "n_increases": 15,
+      "max_increase": 0.0012790886719856731
+    }
+  },
+  "ECG200": {
+    "exact": {
+      "n_steps": 300,
+      "n_increases": 0,
+      "max_increase": -1.0389017834899761e-07,
+      "rel_decrease": 0.09209779407206886,
+      "grad_norm_first": 0.05118004918880463,
+      "grad_norm_last": 4.0325469539507106e-05,
+      "ari": 0.25865000491866164
+    },
+    "adam": {
+      "n_steps": 400,
+      "n_increases": 5,
+      "max_increase": 0.0008443001231559499
+    }
+  }
+}
