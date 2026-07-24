@@ -92,37 +92,39 @@ def fit_no_const(X, K, sigma, epochs, lr, seed, covariance_type="diagonal"):
 # ----------------------------------------------------------------------
 def run_scaling_single(n, K, M, epochs, lr, seed, with_const):
     import psutil
+    from sklearn.metrics import adjusted_rand_score
     proc = psutil.Process()
     base_mb = proc.memory_info().rss / (1024.0 ** 2)
 
-    X, _ = make_mixture(K, M, n // K, sep=6.0, std=0.35, seed=seed)
+    X, y = make_mixture(K, M, n // K, sep=6.0, std=0.35, seed=seed)
     sigma = median_sigma(X)
 
     t0 = time.perf_counter()
     if with_const:
-        fit_gaussian_mixture_mmd(
+        model, _ = fit_gaussian_mixture_mmd(
             X, num_components=K, kernel=GaussianKernel(sigma=sigma),
             num_epochs=epochs, lr=lr, covariance_type="diagonal",
             init_method="kmeans++", verbose=False,
         )
     else:
-        fit_no_const(X, K, sigma, epochs, lr, seed)
+        model, _ = fit_no_const(X, K, sigma, epochs, lr, seed)
     dt = time.perf_counter() - t0
 
     peak_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
+    with torch.no_grad():
+        labels = model.responsibilities(X).argmax(1).numpy()
     return {
         "n": int(X.shape[0]), "K": K, "M": M, "with_const": bool(with_const),
         "runtime_s": dt, "peak_rss_mb": peak_mb,
         "peak_extra_mb": max(0.0, peak_mb - base_mb),
+        "ari": float(adjusted_rand_score(y, labels)),
     }
 
 
 def driver_scaling(args):
     import subprocess
     rows = []
-    # the O(n^2) Gram is 8 n^2 bytes -> only feasible for moderate n
-    plan = [(n, True) for n in [1000, 2000, 5000, 10000]] + \
-           [(n, False) for n in [1000, 2000, 5000, 10000, 20000, 50000, 100000]]
+    plan = [(n, False) for n in [1000, 5000, 10000, 20000, 50000, 100000, 1000000]]
     for n, wc in plan:
         cmd = [sys.executable, os.path.abspath(__file__), "scaling-single",
                "--n", str(n), "--K", str(args.K), "--M", str(args.M),
@@ -133,7 +135,8 @@ def driver_scaling(args):
             row = json.loads(out.strip().splitlines()[-1])
         except subprocess.CalledProcessError:
             row = {"n": n, "with_const": wc, "runtime_s": None,
-                   "peak_rss_mb": None, "peak_extra_mb": None, "oom": True}
+                   "peak_rss_mb": None, "peak_extra_mb": None, "ari": None,
+                   "oom": True}
         rows.append(row)
         print("  ", row, flush=True)
     with open(os.path.join(RESULTS, "r2_scaling.json"), "w") as f:

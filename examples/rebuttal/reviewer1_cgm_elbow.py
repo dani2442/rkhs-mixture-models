@@ -17,6 +17,7 @@ import json
 
 import numpy as np
 import torch
+from scipy.spatial.distance import pdist, squareform
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 RESULTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
@@ -28,7 +29,10 @@ from examples.train_glucodensity_temporal import (
     load_and_preprocess_cgm, compute_sliding_windows,
 )
 from examples.train_glucodensity_correlation import compute_sliding_window_correlations
-from src import GaussianKernel, GaussianMixtureModel, SymmetricMatrixBasis
+from examples.train_glucodensity_correlation_graph import threshold_to_adjacency
+from src import (
+    GaussianKernel, GaussianMixtureModel, GraphLaplacianBasis, SymmetricMatrixBasis,
+)
 from src.spaces import H1CosineBasis
 from src.mixture import fit_gaussian_mixture_mmd
 
@@ -39,6 +43,15 @@ IMG = os.path.join(ROOT, "paper", "images")
 KS = [1, 2, 3, 4, 5, 6]
 RESTARTS = 5
 EPOCHS = 300
+
+# graph representation (mirrors examples/patient_correlation_network_graph.ipynb)
+G_WINDOW = 21
+G_MIN_PRESENCE = 0.4
+G_EDGE_PERCENTILE = 85
+G_RANK = 4
+G_ALPHA = 1.0
+G_R_S = 16
+N_SLOTS = 288
 
 
 def median_sigma(X, max_samples=1500):
@@ -105,6 +118,68 @@ def build_correlation(patient_data, W=14, max_n=2000, seed=42):
     return coeffs
 
 
+def build_graph(patient_data, verbose=True):
+    """Individual-similarity graph signals, as in the case study notebook.
+
+    Per sliding window, patients are compared through their H^1 curve
+    coefficients; the resulting N_pat x N_pat similarity matrix is treated as a
+    vector-valued signal on a fixed patient graph and projected onto the leading
+    Laplacian eigenvectors.
+    """
+    # per-patient window-averaged daily curves
+    patient_window_curves = {}
+    for pid, days_matrix in patient_data.items():
+        pw = {}
+        for w in range(0, days_matrix.shape[0] - G_WINDOW + 1):
+            avg_curve = np.nanmean(days_matrix[w: w + G_WINDOW], axis=0)
+            nan_mask = np.isnan(avg_curve)
+            if nan_mask.all():
+                continue
+            if nan_mask.any():
+                valid_idx = np.where(~nan_mask)[0]
+                avg_curve = np.interp(np.arange(N_SLOTS), valid_idx, avg_curve[valid_idx])
+            pw[w] = avg_curve
+        if pw:
+            patient_window_curves[pid] = pw
+
+    all_w = sorted({w for pw in patient_window_curves.values() for w in pw})
+    w_pids = {w: {pid for pid, pw in patient_window_curves.items() if w in pw} for w in all_w}
+    presence = {pid: sum(1 for w in all_w if pid in w_pids[w]) / len(all_w)
+                for pid in patient_window_curves}
+    common_pids = sorted(pid for pid, f in presence.items() if f >= G_MIN_PRESENCE)
+    N_pat = len(common_pids)
+    valid_w = [w for w in all_w if all(pid in w_pids[w] for pid in common_pids)]
+    if verbose:
+        print(f"  common patients: {N_pat}, valid windows: {len(valid_w)}/{len(all_w)}")
+
+    # patient-to-patient similarity per window, from H^1 curve coefficients
+    curve_basis = H1CosineBasis(T=1.0, R=G_R_S, grid_size=N_SLOTS, d=1,
+                                device=DEVICE, dtype=DTYPE)
+    dists = np.zeros((len(valid_w), N_pat, N_pat))
+    for idx, w in enumerate(valid_w):
+        curves = np.stack([patient_window_curves[pid][w] for pid in common_pids])
+        curves_t = torch.tensor(curves, device=DEVICE, dtype=DTYPE).unsqueeze(-1)
+        with torch.no_grad():
+            c = curve_basis.project(curves_t).cpu().numpy()
+        dists[idx] = squareform(pdist(c, metric="euclidean"))
+    sim = 1.0 - dists / (dists.max() + 1e-10)
+
+    # fixed patient graph from the time-averaged similarity
+    avg_sim = sim.mean(axis=0)
+    np.fill_diagonal(avg_sim, 0.0)
+    thr = np.percentile(avg_sim[~np.eye(N_pat, dtype=bool)], G_EDGE_PERCENTILE)
+    weights = avg_sim * threshold_to_adjacency(avg_sim, threshold=thr, absolute=False)
+    graph_basis = GraphLaplacianBasis.from_adjacency(
+        adjacency=torch.tensor(weights, device=DEVICE, dtype=DTYPE),
+        alpha=G_ALPHA, num_eigenvectors=min(G_RANK, N_pat), normalized=False,
+        device=DEVICE, dtype=DTYPE)
+
+    coeffs = graph_basis.project(torch.tensor(sim, device=DEVICE, dtype=DTYPE))
+    coeffs = normalize(coeffs)
+    print(f"  graph features: {tuple(coeffs.shape)}")
+    return coeffs
+
+
 def main():
     print("[load]")
     patient_data = load_and_preprocess_cgm(CSV, max_prop_missing=0.20, block_size=4, verbose=True)
@@ -120,9 +195,14 @@ def main():
     s_c, c_c = mmd_curve(Xc, "correlation")
     results["correlation"] = {"sigma": s_c, "curve": c_c, "M": Xc.shape[1], "n": Xc.shape[0]}
 
+    print("\n[patient-similarity graph signals]")
+    Xg = build_graph(patient_data)
+    s_g, c_g = mmd_curve(Xg, "graph")
+    results["graph"] = {"sigma": s_g, "curve": c_g, "M": Xg.shape[1], "n": Xg.shape[0]}
+
     with open(os.path.join(RESULTS, "cgm_elbow.json"), "w") as f:
         json.dump({"KS": KS, **results}, f, indent=2)
-    print("\nDONE (intraday + correlation)")
+    print("\nDONE (intraday + correlation + graph)")
 
 
 if __name__ == "__main__":

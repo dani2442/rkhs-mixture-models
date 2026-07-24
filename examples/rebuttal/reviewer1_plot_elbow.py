@@ -10,9 +10,12 @@ SC = os.path.join(HERE, "results", "cgm_elbow.json")
 d = json.load(open(SC))
 KS = d["KS"]
 panels = [("intraday", "Intraday $H^1$ curves", 2),
-          ("correlation", "Correlation matrices $\\mathrm{Sym}(24)$", 3)]
+          ("correlation", "Correlation matrices $\\mathrm{Sym}(24)$", 3),
+          ("graph", "Similarity graph signals", 3)]
+panels = [p for p in panels if p[0] in d]
 
-fig, axes = plt.subplots(1, len(panels), figsize=(4.2 * len(panels), 3.2))
+fig, axes = plt.subplots(1, len(panels), figsize=(4.0 * len(panels), 3.2))
+axes = np.atleast_1d(axes)
 for ax, (key, title, ksel) in zip(axes, panels):
     c = np.array(d[key]["curve"])
     ax.plot(KS, c, "o-", color="tab:blue", lw=2, ms=6)
@@ -32,3 +35,4 @@ for key, title, _ in panels:
     dec = -np.diff(c)
     print(title, "curve:", [f"{v:.3e}" for v in c])
     print("   marginal drops:", [f"{v:.3e}" for v in dec])
+    print("   relative drops:", [f"{v:.1%}" for v in dec / c[:-1]])
