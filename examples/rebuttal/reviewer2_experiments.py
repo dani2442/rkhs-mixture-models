@@ -40,14 +40,27 @@ os.makedirs(RESULTS, exist_ok=True)
 # ----------------------------------------------------------------------
 # helpers
 # ----------------------------------------------------------------------
-def median_sigma(X, max_samples=800):
+def median_sigma(X, max_samples=800, seed=None):
+    """Median heuristic on up to max_samples points.  Pass seed to make the
+    subsample (and hence sigma, and hence any reported absolute MMD^2)
+    reproducible; torch's global RNG is seeded from entropy at startup."""
     with torch.no_grad():
-        Xs = X if X.shape[0] <= max_samples else X[torch.randperm(X.shape[0])[:max_samples]]
+        if X.shape[0] <= max_samples:
+            Xs = X
+        else:
+            g = None if seed is None else torch.Generator().manual_seed(seed)
+            Xs = X[torch.randperm(X.shape[0], generator=g)[:max_samples]]
         d = torch.cdist(Xs, Xs)
         iu = torch.triu_indices(d.shape[0], d.shape[1], 1)
         pos = d[iu[0], iu[1]]
         pos = pos[pos > 0]
         return float(pos.median()) if pos.numel() else 1.0
+
+
+def mixture_means(K, M, sep, seed):
+    """The component means make_mixture draws (first draw off the seeded stream)."""
+    g = torch.Generator().manual_seed(seed)
+    return sep * torch.randn(K, M, generator=g, dtype=DTYPE)
 
 
 def make_mixture(K, M, n_per, sep=3.0, std=0.4, seed=0):
@@ -62,6 +75,54 @@ def make_mixture(K, M, n_per, sep=3.0, std=0.4, seed=0):
     y = torch.cat(ys, 0)
     perm = torch.randperm(X.shape[0], generator=g)
     return X[perm], y[perm].numpy()
+
+
+def data_data_const_exact(X, kernel, block=2000):
+    """
+    Exact data-data term  const = (1/n^2) sum_{i,j} kappa(X_i, X_j)  of MMD^2,
+    accumulated in row blocks so the n x n Gram is never materialized.
+
+    Cost is O(n^2) kernel evaluations (~6e7 pairs/s here), which is why the
+    optimizer excludes this term: it is constant in theta and never needed for
+    the gradient.  It is only required to report an absolute MMD^2.
+    """
+    n = X.shape[0]
+    total = 0.0
+    with torch.no_grad():
+        for i in range(0, n, block):
+            Xb = X[i:i + block]
+            if isinstance(kernel, GaussianKernel):
+                D2 = torch.cdist(Xb, X) ** 2
+                G = torch.exp(-D2 / (2.0 * kernel.sigma * kernel.sigma))
+            else:
+                G = torch.stack([
+                    torch.stack([kernel.evaluate(a, b) for b in X]) for a in Xb])
+            total += float(G.sum())
+    return total / (n * n)
+
+
+def data_data_const_closed_form(kernel, K, M, n_per, sep, std, seed=0):
+    """
+    E[const] under the *generating* mixture: with exactly n_per points drawn
+    from each N(mu_k, std^2 I),
+
+        E[(1/n^2) sum_{i,j} kappa] = kappa(x,x)/n
+            + [ n_per(n_per-1) sum_k I_kk + n_per^2 sum_{k!=l} I_kl ] / n^2,
+
+    where I_kl = E_{x~N_k, x'~N_l}[kappa(x,x')] is the same closed form the
+    model uses (Proposition 2).  Used only where the exact O(n^2) sum is out of
+    reach (n=10^6 would be ~10^12 kernel evaluations, several hours); it agrees
+    with the exact V-statistic to ~4e-5 at n=10^4 and the gap shrinks like
+    n^{-1/2}, i.e. ~4e-6 at n=10^6.
+    """
+    n = K * n_per
+    means = mixture_means(K, M, sep, seed)
+    variances = torch.full((K, M), std ** 2, dtype=DTYPE)
+    I = kernel.compute_I_diag(means, variances)          # (K, K)
+    diag = torch.diagonal(I).sum()
+    within = diag * n_per * (n_per - 1)
+    across = (I.sum() - diag) * n_per * n_per
+    return 1.0 / n + float(within + across) / (n * n)
 
 
 def fit_no_const(X, K, sigma, epochs, lr, seed, covariance_type="diagonal"):
@@ -90,19 +151,20 @@ def fit_no_const(X, K, sigma, epochs, lr, seed, covariance_type="diagonal"):
 # ----------------------------------------------------------------------
 # W1: scaling in n, with / without the O(n^2) constant term
 # ----------------------------------------------------------------------
-def run_scaling_single(n, K, M, epochs, lr, seed, with_const):
+def run_scaling_single(n, K, M, epochs, lr, seed, with_const, const_exact_max=100000):
     import psutil
     from sklearn.metrics import adjusted_rand_score
     proc = psutil.Process()
     base_mb = proc.memory_info().rss / (1024.0 ** 2)
 
     X, y = make_mixture(K, M, n // K, sep=6.0, std=0.35, seed=seed)
-    sigma = median_sigma(X)
+    sigma = median_sigma(X, seed=seed)
+    kernel = GaussianKernel(sigma=sigma)
 
     t0 = time.perf_counter()
     if with_const:
         model, _ = fit_gaussian_mixture_mmd(
-            X, num_components=K, kernel=GaussianKernel(sigma=sigma),
+            X, num_components=K, kernel=kernel,
             num_epochs=epochs, lr=lr, covariance_type="diagonal",
             init_method="kmeans++", verbose=False,
         )
@@ -110,14 +172,31 @@ def run_scaling_single(n, K, M, epochs, lr, seed, with_const):
         model, _ = fit_no_const(X, K, sigma, epochs, lr, seed)
     dt = time.perf_counter() - t0
 
+    # read the peak before anything below, so the reported memory is the fit's
     peak_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
     with torch.no_grad():
         labels = model.responsibilities(X).argmax(1).numpy()
+        # cross and mixture-mixture terms are exact and O(nK); only the
+        # data-data term is subsampled (and only when n > max_sub)
+        mmd2_no_const, _ = model.compute_mmd2(X, kernel, compute_const_term=False)
+    t1 = time.perf_counter()
+    if n <= const_exact_max:
+        const = data_data_const_exact(X, kernel)
+        const_mode = "exact"
+    else:
+        const = data_data_const_closed_form(kernel, K, M, n // K, 6.0, 0.35, seed)
+        const_mode = "closed_form"
+    mmd2 = float(mmd2_no_const) + const
     return {
         "n": int(X.shape[0]), "K": K, "M": M, "with_const": bool(with_const),
         "runtime_s": dt, "peak_rss_mb": peak_mb,
         "peak_extra_mb": max(0.0, peak_mb - base_mb),
         "ari": float(adjusted_rand_score(y, labels)),
+        "sigma": sigma,
+        "final_mmd2": mmd2,
+        "final_mmd": float(np.sqrt(max(mmd2, 0.0))),
+        "const": const, "const_mode": const_mode,
+        "const_time_s": time.perf_counter() - t1,
     }
 
 
@@ -129,14 +208,15 @@ def driver_scaling(args):
         cmd = [sys.executable, os.path.abspath(__file__), "scaling-single",
                "--n", str(n), "--K", str(args.K), "--M", str(args.M),
                "--epochs", str(args.epochs), "--lr", str(args.lr),
-               "--seed", str(args.seed)] + (["--with_const"] if wc else [])
+               "--seed", str(args.seed),
+               "--const_exact_max", str(args.const_exact_max)] + (["--with_const"] if wc else [])
         try:
             out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
             row = json.loads(out.strip().splitlines()[-1])
         except subprocess.CalledProcessError:
             row = {"n": n, "with_const": wc, "runtime_s": None,
                    "peak_rss_mb": None, "peak_extra_mb": None, "ari": None,
-                   "oom": True}
+                   "final_mmd2": None, "final_mmd": None, "oom": True}
         rows.append(row)
         print("  ", row, flush=True)
     with open(os.path.join(RESULTS, "r2_scaling.json"), "w") as f:
@@ -381,6 +461,7 @@ def main():
     p.add_argument("--lr", type=float, default=0.05)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--with_const", action="store_true")
+    p.add_argument("--const_exact_max", type=int, default=100000)
 
     p = sub.add_parser("scaling")
     p.add_argument("--K", type=int, default=5)
@@ -388,6 +469,7 @@ def main():
     p.add_argument("--epochs", type=int, default=200)
     p.add_argument("--lr", type=float, default=0.05)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--const_exact_max", type=int, default=100000)
 
     p = sub.add_parser("stability")
     p.add_argument("--M", type=int, default=30)
@@ -407,7 +489,8 @@ def main():
     args = ap.parse_args()
     if args.cmd == "scaling-single":
         print(json.dumps(run_scaling_single(
-            args.n, args.K, args.M, args.epochs, args.lr, args.seed, args.with_const)))
+            args.n, args.K, args.M, args.epochs, args.lr, args.seed, args.with_const,
+            args.const_exact_max)))
     elif args.cmd == "scaling":
         driver_scaling(args)
     elif args.cmd == "stability":

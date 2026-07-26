@@ -26,7 +26,7 @@ Run from anywhere (paths resolve relative to the repo root):
 
 | Script | Command | Backs |
 |---|---|---|
-| `reviewer2_experiments.py` | `scaling` | Time/memory/ARI vs n up to 10⁶, without the O(n²) data–data term (W1, Limitations) → `results/r2_scaling.json` |
+| `reviewer2_experiments.py` | `scaling` | Time/memory/ARI/final MMD² vs n up to 10⁶, fitted without the O(n²) data–data term (W1, Limitations) → `results/r2_scaling.json` |
 | | `stability` | Which matrices are factorized, their conditioning, Cholesky vs explicit inverse (W2) → `results/r2_stability.json` |
 | | `nongauss` | Held-out MMD² vs K for ring / heavy-tailed / curved / bimodal targets (W3) → `paper/images/rebuttal_nongaussian.pdf` |
 | `reviewer2_kmeans.py` | — | k-means vs the mixture with a Bayes-rule reference (Q1) → `results/r2_kmeans.json` |
@@ -87,6 +87,18 @@ too. `fit_no_const` in `reviewer2_experiments.py` is the training loop without i
 that is the path `scaling` measures, and the one that reaches n = 10⁶. The
 with-the-term path is still reachable via `scaling-single --with_const`; it costs
 2.3 GB already at n = 10⁴ and is infeasible beyond that.
+
+Reporting an *absolute* final MMD² does need the term, so `scaling` adds it back
+after the fit (and after the peak-memory reading, so the reported memory stays
+the fit's). `data_data_const_exact` accumulates it in row blocks — O(n²) time,
+O(n·block) memory — for n ≤ `--const_exact_max` (default 10⁵, ~7 min at 10⁵ and
+~11 h at 10⁶). Beyond that, `data_data_const_closed_form` evaluates its
+expectation under the known generating mixture at the same σ. Subsampling the
+term instead is *not* accurate enough: at 2·10⁴ subsampled points its error is
+~5·10⁻⁴, twice the MMD² being reported, whereas the closed form is off by
+3.9·10⁻⁵ at n = 10⁴ and shrinks like n^(-1/2) (~4·10⁻⁶ at n = 10⁶, ≈1.6% of the
+value). `median_sigma` takes a `seed` here for the same reason — σ came from the
+unseeded global RNG, and a 0.2% wobble in σ moves the constant by ~10⁻³.
 
 **The bandwidth finding (Q1).** The concentric-shells scenario scores ARI 0.422
 under the median heuristic and 1.000 at σ ≤ 0.35 × median. The heuristic is
