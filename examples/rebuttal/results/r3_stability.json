@@ -1,0 +1,973 @@
+{
+  "m_grid": [
+    1,
+    5,
+    10,
+    20
+  ],
+  "repeats": 5,
+  "seed0": 42,
+  "em_n_init": 1,
+  "datasets": {
+    "Growth": {
+      "K": 2,
+      "n": 93,
+      "grid_size": 31,
+      "M_default": 15,
+      "M_max": 31,
+      "M_nyquist": 15,
+      "per_M": {
+        "1": {
+          "aliased": false,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": -0.00115665931988927,
+              "ari_vs_truth_std": 0.011974535784188953,
+              "ari_vs_truth_all": [
+                0.013157220238196949,
+                0.013656356413166856,
+                -0.00830399168813723,
+                -0.012146440781336464,
+                -0.012146440781336464
+              ],
+              "pairwise_ari_mean": 0.35888009305899005,
+              "pairwise_ari_std": 0.36916147190881277,
+              "pairwise_ari_min": 0.009288352006008638,
+              "pairwise_vi_mean": 0.6799333775045175,
+              "posterior_agreement_mean": 0.8699401058073608
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": 0.08678061087045726,
+              "ari_vs_truth_std": 0.028671317671208802,
+              "ari_vs_truth_all": [
+                0.11019064371969192,
+                0.11019064371969192,
+                0.05166556159660522,
+                0.05166556159660522,
+                0.11019064371969192
+              ],
+              "pairwise_ari_mean": 0.7171999191177614,
+              "pairwise_ari_std": 0.2309052991264322,
+              "pairwise_ari_min": 0.5286665318629357,
+              "pairwise_vi_mean": 0.23857352453085187,
+              "posterior_agreement_mean": 0.9670609210665528
+            }
+          }
+        },
+        "5": {
+          "aliased": false,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": 0.5590864433836448,
+              "ari_vs_truth_std": 0.033377271277517155,
+              "ari_vs_truth_all": [
+                0.5456508655786455,
+                0.5138651236643944,
+                0.6119486174042478,
+                0.5456508655786455,
+                0.5783167446922906
+              ],
+              "pairwise_ari_mean": 0.8593724151945257,
+              "pairwise_ari_std": 0.07873080926119246,
+              "pairwise_ari_min": 0.718569116864111,
+              "pairwise_vi_mean": 0.249095971690186,
+              "posterior_agreement_mean": 0.9668762685788929
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": 0.4511032416235358,
+              "ari_vs_truth_std": 0.0,
+              "ari_vs_truth_all": [
+                0.4511032416235358,
+                0.4511032416235358,
+                0.4511032416235358,
+                0.4511032416235358,
+                0.4511032416235358
+              ],
+              "pairwise_ari_mean": 1.0,
+              "pairwise_ari_std": 0.0,
+              "pairwise_ari_min": 1.0,
+              "pairwise_vi_mean": -2.220446049250313e-16,
+              "posterior_agreement_mean": 1.0
+            }
+          }
+        },
+        "10": {
+          "aliased": false,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": 0.6607742315124875,
+              "ari_vs_truth_std": 0.01739476876236712,
+              "ari_vs_truth_all": [
+                0.6465714622919863,
+                0.6465714622919863,
+                0.6820783853432392,
+                0.6465714622919863,
+                0.6820783853432392
+              ],
+              "pairwise_ari_mean": 0.9741936668340857,
+              "pairwise_ari_std": 0.021070782796250714,
+              "pairwise_ari_min": 0.9569894447234764,
+              "pairwise_vi_mean": 0.062369260195602294,
+              "posterior_agreement_mean": 0.9909094527138829
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": 0.7185141759070219,
+              "ari_vs_truth_std": 6.564896762324476e-05,
+              "ari_vs_truth_all": [
+                0.7185945791434307,
+                0.7184605737494162,
+                0.7184605737494162,
+                0.7185945791434307,
+                0.7184605737494162
+              ],
+              "pairwise_ari_mean": 0.8536030911547121,
+              "pairwise_ari_std": 0.11953257553056562,
+              "pairwise_ari_min": 0.75600515192452,
+              "pairwise_vi_mean": 0.23534894691889824,
+              "posterior_agreement_mean": 0.9775034713550721
+            }
+          }
+        },
+        "20": {
+          "aliased": true,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": 0.5717481683845167,
+              "ari_vs_truth_std": 0.013137152615547753,
+              "ari_vs_truth_all": [
+                0.5783167446922906,
+                0.5783167446922906,
+                0.5783167446922906,
+                0.5783167446922906,
+                0.5454738631534212
+              ],
+              "pairwise_ari_mean": 0.9495102088988553,
+              "pairwise_ari_std": 0.06183711270875981,
+              "pairwise_ari_min": 0.873775522247138,
+              "pairwise_vi_mean": 0.09631646142953403,
+              "posterior_agreement_mean": 0.9867016811743408
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": 0.6115227018205832,
+              "ari_vs_truth_std": 0.0,
+              "ari_vs_truth_all": [
+                0.6115227018205832,
+                0.6115227018205832,
+                0.6115227018205832,
+                0.6115227018205832,
+                0.6115227018205832
+              ],
+              "pairwise_ari_mean": 1.0,
+              "pairwise_ari_std": 0.0,
+              "pairwise_ari_min": 1.0,
+              "pairwise_vi_mean": -1.1102230246251565e-15,
+              "posterior_agreement_mean": 1.0
+            }
+          }
+        }
+      },
+      "init_scheme": {
+        "kmeans++": {
+          "ari_vs_truth_mean": 0.5785016661539314,
+          "ari_vs_truth_std": 0.021011358389538094,
+          "ari_vs_truth_all": [
+            0.5783167446922906,
+            0.5783167446922906,
+            0.545559103755336,
+            0.6119989929374493,
+            0.5783167446922906
+          ],
+          "pairwise_ari_mean": 0.9656850088358642,
+          "pairwise_ari_std": 0.025620029168909177,
+          "pairwise_ari_min": 0.914914942918627,
+          "pairwise_vi_mean": 0.0801958114159715,
+          "posterior_agreement_mean": 0.9948004800823605
+        },
+        "random": {
+          "ari_vs_truth_mean": 0.5785016661539314,
+          "ari_vs_truth_std": 0.021011358389538094,
+          "ari_vs_truth_all": [
+            0.5783167446922906,
+            0.5783167446922906,
+            0.545559103755336,
+            0.6119989929374493,
+            0.5783167446922906
+          ],
+          "pairwise_ari_mean": 0.9656850088358642,
+          "pairwise_ari_std": 0.025620029168909177,
+          "pairwise_ari_min": 0.914914942918627,
+          "pairwise_vi_mean": 0.0801958114159715,
+          "posterior_agreement_mean": 0.9937064441779331
+        }
+      }
+    },
+    "Waveform": {
+      "K": 3,
+      "n": 500,
+      "grid_size": 21,
+      "M_default": 10,
+      "M_max": 21,
+      "M_nyquist": 10,
+      "per_M": {
+        "1": {
+          "aliased": false,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": -0.0012805374344577857,
+              "ari_vs_truth_std": 0.0005320637250814212,
+              "ari_vs_truth_all": [
+                -0.0007520201071700284,
+                -0.0019104341192568146,
+                -0.0016743250118827627,
+                -0.0005524881325580771,
+                -0.0015134198014212456
+              ],
+              "pairwise_ari_mean": 0.2602027096652302,
+              "pairwise_ari_std": 0.25409586586786304,
+              "pairwise_ari_min": -0.01683676454456715,
+              "pairwise_vi_mean": 0.767301625057021,
+              "posterior_agreement_mean": 0.7986465186117168
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": -0.00023588489998749973,
+              "ari_vs_truth_std": 0.0002573638609293213,
+              "ari_vs_truth_all": [
+                -5.363082395615472e-05,
+                -0.0007407577232261706,
+                -5.363082395615472e-05,
+                -0.00016570256439950925,
+                -0.00016570256439950925
+              ],
+              "pairwise_ari_mean": 0.48279397340333013,
+              "pairwise_ari_std": 0.33661785091180935,
+              "pairwise_ari_min": 0.08927042764757635,
+              "pairwise_vi_mean": 0.1533049826323606,
+              "posterior_agreement_mean": 0.938523899944219
+            }
+          }
+        },
+        "5": {
+          "aliased": false,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": 0.25326740253689783,
+              "ari_vs_truth_std": 0.0024184479840678656,
+              "ari_vs_truth_all": [
+                0.25481608313265836,
+                0.25189417253565594,
+                0.24953044326005494,
+                0.25657348378569256,
+                0.2535228299704272
+              ],
+              "pairwise_ari_mean": 0.9103255394133463,
+              "pairwise_ari_std": 0.034841742251178566,
+              "pairwise_ari_min": 0.86558993401308,
+              "pairwise_vi_mean": 0.26463168191395803,
+              "posterior_agreement_mean": 0.970374151034773
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": 0.2521035414573824,
+              "ari_vs_truth_std": 0.0,
+              "ari_vs_truth_all": [
+                0.2521035414573824,
+                0.2521035414573824,
+                0.2521035414573824,
+                0.2521035414573824,
+                0.2521035414573824
+              ],
+              "pairwise_ari_mean": 1.0,
+              "pairwise_ari_std": 0.0,
+              "pairwise_ari_min": 1.0,
+              "pairwise_vi_mean": 4.440892098500626e-16,
+              "posterior_agreement_mean": 0.9999999999999998
+            }
+          }
+        },
+        "10": {
+          "aliased": false,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": 0.27368796701419995,
+              "ari_vs_truth_std": 0.08628542990728279,
+              "ari_vs_truth_all": [
+                0.18735782445824334,
+                0.25015773838348604,
+                0.2621546088501056,
+                0.43859153681188473,
+                0.2301781265672802
+              ],
+              "pairwise_ari_mean": 0.5978784596188256,
+              "pairwise_ari_std": 0.16805797498353517,
+              "pairwise_ari_min": 0.328439667878021,
+              "pairwise_vi_mean": 0.8288556973492757,
+              "posterior_agreement_mean": 0.8231025885095216
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": 0.20574607960820085,
+              "ari_vs_truth_std": 0.08796279788410777,
+              "ari_vs_truth_all": [
+                0.2498262536657606,
+                0.249397603213312,
+                0.249397603213312,
+                0.2502872247042029,
+                0.02982171324441667
+              ],
+              "pairwise_ari_mean": 0.6259268812986841,
+              "pairwise_ari_std": 0.4397766356305926,
+              "pairwise_ari_min": 0.08626467922583754,
+              "pairwise_vi_mean": 0.555781149991045,
+              "posterior_agreement_mean": 0.8452313719187922
+            }
+          }
+        },
+        "20": {
+          "aliased": true,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": 0.27535554094931464,
+              "ari_vs_truth_std": 0.054006748511187634,
+              "ari_vs_truth_all": [
+                0.268762562881469,
+                0.1887826035342099,
+                0.34688485967414134,
+                0.2570637983253485,
+                0.31528388033140436
+              ],
+              "pairwise_ari_mean": 0.4758597430056956,
+              "pairwise_ari_std": 0.06961165536498289,
+              "pairwise_ari_min": 0.39067599798959096,
+              "pairwise_vi_mean": 1.0490860543545848,
+              "posterior_agreement_mean": 0.7410953839364539
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": 0.25166215735270664,
+              "ari_vs_truth_std": 0.0010751875750188737,
+              "ari_vs_truth_all": [
+                0.25223968018754805,
+                0.2501205993629034,
+                0.2533379611445717,
+                0.25124076615821717,
+                0.2513717799102929
+              ],
+              "pairwise_ari_mean": 0.9606976619155109,
+              "pairwise_ari_std": 0.012679093019130984,
+              "pairwise_ari_min": 0.9405522310519653,
+              "pairwise_vi_mean": 0.13695975603894867,
+              "posterior_agreement_mean": 0.9887998497897049
+            }
+          }
+        }
+      },
+      "init_scheme": {
+        "kmeans++": {
+          "ari_vs_truth_mean": 0.27368796701419995,
+          "ari_vs_truth_std": 0.08628542990728279,
+          "ari_vs_truth_all": [
+            0.18735782445824334,
+            0.25015773838348604,
+            0.2621546088501056,
+            0.43859153681188473,
+            0.2301781265672802
+          ],
+          "pairwise_ari_mean": 0.5978784596188256,
+          "pairwise_ari_std": 0.16805797498353517,
+          "pairwise_ari_min": 0.328439667878021,
+          "pairwise_vi_mean": 0.8288556973492757,
+          "posterior_agreement_mean": 0.8231025885095216
+        },
+        "random": {
+          "ari_vs_truth_mean": 0.28087551972606145,
+          "ari_vs_truth_std": 0.01941522373941947,
+          "ari_vs_truth_all": [
+            0.2879379804696414,
+            0.2623779543779458,
+            0.3055127223416724,
+            0.29425667330215227,
+            0.25429226813889527
+          ],
+          "pairwise_ari_mean": 0.651652831704507,
+          "pairwise_ari_std": 0.13410755403858682,
+          "pairwise_ari_min": 0.46968683657703686,
+          "pairwise_vi_mean": 0.7490787532131249,
+          "posterior_agreement_mean": 0.8578928155070706
+        }
+      }
+    },
+    "Phoneme": {
+      "K": 5,
+      "n": 2000,
+      "grid_size": 150,
+      "M_default": 15,
+      "M_max": 150,
+      "M_nyquist": 75,
+      "per_M": {
+        "1": {
+          "aliased": false,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": 0.20899175899125408,
+              "ari_vs_truth_std": 0.013950140863012972,
+              "ari_vs_truth_all": [
+                0.2216512630926196,
+                0.19949804812447758,
+                0.20662232912154976,
+                0.1896633466556584,
+                0.22752380796196497
+              ],
+              "pairwise_ari_mean": 0.6057347990336728,
+              "pairwise_ari_std": 0.1812595718893733,
+              "pairwise_ari_min": 0.4008063554714142,
+              "pairwise_vi_mean": 0.7338998304108009,
+              "posterior_agreement_mean": 0.8177751721760689
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": 0.11948878053088582,
+              "ari_vs_truth_std": 0.02021276951498203,
+              "ari_vs_truth_all": [
+                0.1599143195608499,
+                0.10938239577339481,
+                0.10938239577339481,
+                0.10938239577339481,
+                0.10938239577339481
+              ],
+              "pairwise_ari_mean": 0.9442645217489731,
+              "pairwise_ari_std": 0.06826174114250257,
+              "pairwise_ari_min": 0.8606613043724329,
+              "pairwise_vi_mean": 0.08120993798676061,
+              "posterior_agreement_mean": 0.9008211215610572
+            }
+          }
+        },
+        "5": {
+          "aliased": false,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": 0.6042529142582995,
+              "ari_vs_truth_std": 0.05633488166064457,
+              "ari_vs_truth_all": [
+                0.6053621985232085,
+                0.5146545153088915,
+                0.6787011849347995,
+                0.6444235488993744,
+                0.578123123625224
+              ],
+              "pairwise_ari_mean": 0.6709618465838322,
+              "pairwise_ari_std": 0.13958071195879165,
+              "pairwise_ari_min": 0.48623459824597254,
+              "pairwise_vi_mean": 0.848407793735203,
+              "posterior_agreement_mean": 0.7506780900882498
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": 0.6068090178400674,
+              "ari_vs_truth_std": 0.056763779148699796,
+              "ari_vs_truth_all": [
+                0.6743313957240546,
+                0.5372064908101898,
+                0.5758536421190532,
+                0.5723221648229844,
+                0.6743313957240546
+              ],
+              "pairwise_ari_mean": 0.7177203513133963,
+              "pairwise_ari_std": 0.16057867006883805,
+              "pairwise_ari_min": 0.5819034337662161,
+              "pairwise_vi_mean": 0.6080518970529166,
+              "posterior_agreement_mean": 0.8013028739485055
+            }
+          }
+        },
+        "10": {
+          "aliased": false,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": 0.6424105025639557,
+              "ari_vs_truth_std": 0.042849471267509834,
+              "ari_vs_truth_all": [
+                0.7213938161445217,
+                0.601456399239907,
+                0.649687509897591,
+                0.6101266610764522,
+                0.6293881264613068
+              ],
+              "pairwise_ari_mean": 0.6872308470915651,
+              "pairwise_ari_std": 0.07420189085011854,
+              "pairwise_ari_min": 0.5963762105939558,
+              "pairwise_vi_mean": 0.7811562093522187,
+              "posterior_agreement_mean": 0.8032377116444295
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": 0.7541339557681447,
+              "ari_vs_truth_std": 0.001656344494185335,
+              "ari_vs_truth_all": [
+                0.7523931523003218,
+                0.755770301957741,
+                0.754790663082967,
+                0.7557846941729385,
+                0.7519309673267548
+              ],
+              "pairwise_ari_mean": 0.9887512188311766,
+              "pairwise_ari_std": 0.007102526072492497,
+              "pairwise_ari_min": 0.9800859006356873,
+              "pairwise_vi_mean": 0.042134030367186034,
+              "posterior_agreement_mean": 0.9965945442805305
+            }
+          }
+        },
+        "20": {
+          "aliased": false,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": 0.668566544972997,
+              "ari_vs_truth_std": 0.0722772875629664,
+              "ari_vs_truth_all": [
+                0.5612607996932132,
+                0.7042569498303481,
+                0.7059616566189502,
+                0.6103513743813687,
+                0.7610019443411045
+              ],
+              "pairwise_ari_mean": 0.5983892764513541,
+              "pairwise_ari_std": 0.08161325529761813,
+              "pairwise_ari_min": 0.4759780623395163,
+              "pairwise_vi_mean": 0.9304797749881907,
+              "posterior_agreement_mean": 0.7452250333909478
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": 0.7049714688790362,
+              "ari_vs_truth_std": 0.14864407816579253,
+              "ari_vs_truth_all": [
+                0.4256082018169983,
+                0.8071724835873986,
+                0.6763737533008423,
+                0.807762178426397,
+                0.8079407272635446
+              ],
+              "pairwise_ari_mean": 0.6865769578261912,
+              "pairwise_ari_std": 0.21159389714032623,
+              "pairwise_ari_min": 0.3152107236963299,
+              "pairwise_vi_mean": 0.6119001842055432,
+              "posterior_agreement_mean": 0.7579321588753218
+            }
+          }
+        }
+      },
+      "init_scheme": {
+        "kmeans++": {
+          "ari_vs_truth_mean": 0.6651307663486496,
+          "ari_vs_truth_std": 0.08648306115156322,
+          "ari_vs_truth_all": [
+            0.7554565572196669,
+            0.7487865927635289,
+            0.6642409707800772,
+            0.6388275829856332,
+            0.5183421279943422
+          ],
+          "pairwise_ari_mean": 0.6498357732684525,
+          "pairwise_ari_std": 0.13631268079145417,
+          "pairwise_ari_min": 0.45166223944829115,
+          "pairwise_vi_mean": 0.7611280397606841,
+          "posterior_agreement_mean": 0.7091345935655359
+        },
+        "random": {
+          "ari_vs_truth_mean": 0.6104713273068357,
+          "ari_vs_truth_std": 0.06774010839932272,
+          "ari_vs_truth_all": [
+            0.7384815038714443,
+            0.566333895206258,
+            0.6197331828196265,
+            0.5735498655210775,
+            0.5542581891157725
+          ],
+          "pairwise_ari_mean": 0.6185960332729664,
+          "pairwise_ari_std": 0.06683683258897301,
+          "pairwise_ari_min": 0.5322169515183538,
+          "pairwise_vi_mean": 0.857477435354918,
+          "posterior_agreement_mean": 0.7180675839001901
+        }
+      }
+    },
+    "Kneading": {
+      "K": 3,
+      "n": 115,
+      "grid_size": 241,
+      "M_default": 15,
+      "M_max": 241,
+      "M_nyquist": 120,
+      "per_M": {
+        "1": {
+          "aliased": false,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": 0.2434522517443428,
+              "ari_vs_truth_std": 0.10846602312194463,
+              "ari_vs_truth_all": [
+                0.3681832974049315,
+                0.071109195043073,
+                0.2431926736330374,
+                0.34618689152115745,
+                0.18858920111951483
+              ],
+              "pairwise_ari_mean": 0.33650919242447375,
+              "pairwise_ari_std": 0.2830319277497911,
+              "pairwise_ari_min": -0.08708536442799934,
+              "pairwise_vi_mean": 0.7756023136497098,
+              "posterior_agreement_mean": 0.7091167190041584
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": 0.11181675294848777,
+              "ari_vs_truth_std": 0.02146754176274111,
+              "ari_vs_truth_all": [
+                0.1010829820671172,
+                0.1010829820671172,
+                0.1010829820671172,
+                0.1010829820671172,
+                0.15475183647396998
+              ],
+              "pairwise_ari_mean": 0.8914117946372688,
+              "pairwise_ari_std": 0.1329928476116217,
+              "pairwise_ari_min": 0.728529486593172,
+              "pairwise_vi_mean": 0.15682240324388813,
+              "posterior_agreement_mean": 0.9652000059202896
+            }
+          }
+        },
+        "5": {
+          "aliased": false,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": 0.4025752076514951,
+              "ari_vs_truth_std": 0.062383819144478596,
+              "ari_vs_truth_all": [
+                0.405570206100052,
+                0.45807512078083573,
+                0.4735464690662037,
+                0.2994244874389332,
+                0.37625975487145114
+              ],
+              "pairwise_ari_mean": 0.4665039963302995,
+              "pairwise_ari_std": 0.15172817584360343,
+              "pairwise_ari_min": 0.2926925506946263,
+              "pairwise_vi_mean": 0.9527257008314713,
+              "posterior_agreement_mean": 0.6976470618065124
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": 0.3753194531328615,
+              "ari_vs_truth_std": 0.009837635069787815,
+              "ari_vs_truth_all": [
+                0.3801049687319543,
+                0.3559396116224929,
+                0.3775397976622094,
+                0.3829079189156968,
+                0.3801049687319543
+              ],
+              "pairwise_ari_mean": 0.9419583230306301,
+              "pairwise_ari_std": 0.035084839089793214,
+              "pairwise_ari_min": 0.8812288747010337,
+              "pairwise_vi_mean": 0.17147888255469848,
+              "posterior_agreement_mean": 0.9740419619619113
+            }
+          }
+        },
+        "10": {
+          "aliased": false,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": 0.41020852002006036,
+              "ari_vs_truth_std": 0.044890400549196054,
+              "ari_vs_truth_all": [
+                0.4546199137381311,
+                0.47366486130616625,
+                0.37767876097942304,
+                0.3630376734950184,
+                0.3820413905815627
+              ],
+              "pairwise_ari_mean": 0.6326613355975963,
+              "pairwise_ari_std": 0.15744017282429953,
+              "pairwise_ari_min": 0.47772236470895696,
+              "pairwise_vi_mean": 0.6677383058142855,
+              "posterior_agreement_mean": 0.7944566337320678
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": 0.19360217009927902,
+              "ari_vs_truth_std": 0.1380772505511602,
+              "ari_vs_truth_all": [
+                -0.017374771868591828,
+                0.20207775226722738,
+                0.14779133705458344,
+                0.4121389453752047,
+                0.22337758766797142
+              ],
+              "pairwise_ari_mean": 0.19908096104597325,
+              "pairwise_ari_std": 0.2524789285691584,
+              "pairwise_ari_min": -0.019409332257931584,
+              "pairwise_vi_mean": 1.0278986848864455,
+              "posterior_agreement_mean": 0.6498031701943814
+            }
+          }
+        },
+        "20": {
+          "aliased": false,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": 0.3435329218136688,
+              "ari_vs_truth_std": 0.046503688153969346,
+              "ari_vs_truth_all": [
+                0.35838012208124637,
+                0.3742077913871675,
+                0.288485408776517,
+                0.2909546355950698,
+                0.4056366512283434
+              ],
+              "pairwise_ari_mean": 0.3747447639215512,
+              "pairwise_ari_std": 0.1826024982070145,
+              "pairwise_ari_min": 0.11108003090787735,
+              "pairwise_vi_mean": 1.0867637736839264,
+              "posterior_agreement_mean": 0.6610093759931577
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": 0.2251296619112766,
+              "ari_vs_truth_std": 0.08617442717503791,
+              "ari_vs_truth_all": [
+                0.21576537086005204,
+                0.3001052443713171,
+                0.2698468105890128,
+                0.2779823985247738,
+                0.06194848521122729
+              ],
+              "pairwise_ari_mean": 0.18631016032086242,
+              "pairwise_ari_std": 0.0913892656373866,
+              "pairwise_ari_min": 0.03953367926600212,
+              "pairwise_vi_mean": 1.348872815852967,
+              "posterior_agreement_mean": 0.7053154960221537
+            }
+          }
+        }
+      },
+      "init_scheme": {
+        "kmeans++": {
+          "ari_vs_truth_mean": 0.3390877002962268,
+          "ari_vs_truth_std": 0.037972842270574195,
+          "ari_vs_truth_all": [
+            0.3054743270138329,
+            0.3152858009099802,
+            0.38455423240227504,
+            0.3861394532256944,
+            0.3039846879293515
+          ],
+          "pairwise_ari_mean": 0.5323773126046375,
+          "pairwise_ari_std": 0.17251910761768197,
+          "pairwise_ari_min": 0.33295340740883506,
+          "pairwise_vi_mean": 0.8934990465334419,
+          "posterior_agreement_mean": 0.7600044878469684
+        },
+        "random": {
+          "ari_vs_truth_mean": 0.3586942493783881,
+          "ari_vs_truth_std": 0.02874620828328063,
+          "ari_vs_truth_all": [
+            0.3459052737240049,
+            0.36066916852104997,
+            0.41227466035450505,
+            0.3278526560006734,
+            0.34676948829170745
+          ],
+          "pairwise_ari_mean": 0.564318952136695,
+          "pairwise_ari_std": 0.11637834644950068,
+          "pairwise_ari_min": 0.3795228164628366,
+          "pairwise_vi_mean": 0.8676078109215734,
+          "posterior_agreement_mean": 0.7688207550761766
+        }
+      }
+    },
+    "ECG200": {
+      "K": 2,
+      "n": 200,
+      "grid_size": 96,
+      "M_default": 15,
+      "M_max": 96,
+      "M_nyquist": 48,
+      "per_M": {
+        "1": {
+          "aliased": false,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": -0.007960327658180291,
+              "ari_vs_truth_std": 0.009196527892506462,
+              "ari_vs_truth_all": [
+                -0.018473871184069436,
+                -0.015293976440346567,
+                0.0,
+                0.00553651807104351,
+                -0.011570308737528963
+              ],
+              "pairwise_ari_mean": 0.13680631947876803,
+              "pairwise_ari_std": 0.20132707103454972,
+              "pairwise_ari_min": 0.0,
+              "pairwise_vi_mean": 0.6090544294631179,
+              "posterior_agreement_mean": 0.7708708094620306
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": -0.012318322771554526,
+              "ari_vs_truth_std": 0.010914641883117884,
+              "ari_vs_truth_all": [
+                -0.0034065549919382173,
+                -0.0034065549919382173,
+                -0.0034065549919382173,
+                -0.02568597444097899,
+                -0.02568597444097899
+              ],
+              "pairwise_ari_mean": 0.39727624069354667,
+              "pairwise_ari_std": 0.4921218887176249,
+              "pairwise_ari_min": -0.00453959884408893,
+              "pairwise_vi_mean": 0.489649530496859,
+              "posterior_agreement_mean": 0.8940297802610351
+            }
+          }
+        },
+        "5": {
+          "aliased": false,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": 0.19612318756625027,
+              "ari_vs_truth_std": 0.04516915483189119,
+              "ari_vs_truth_all": [
+                0.2698226891635654,
+                0.17734025386454785,
+                0.13675728301854514,
+                0.17734025386454785,
+                0.21935545792004507
+              ],
+              "pairwise_ari_mean": 0.4577837645115295,
+              "pairwise_ari_std": 0.4503200452137267,
+              "pairwise_ari_min": -0.09415448046133738,
+              "pairwise_vi_mean": 0.5532134571388403,
+              "posterior_agreement_mean": 0.7833346749720365
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": 0.0736698336379987,
+              "ari_vs_truth_std": 0.015561016278747898,
+              "ari_vs_truth_all": [
+                0.06128363528584278,
+                0.09773054594688742,
+                0.06128363528584278,
+                0.08676771638557766,
+                0.06128363528584278
+              ],
+              "pairwise_ari_mean": 0.3725257611181231,
+              "pairwise_ari_std": 0.5012215021248775,
+              "pairwise_ari_min": -0.03707316837831172,
+              "pairwise_vi_mean": 0.20712012542524602,
+              "posterior_agreement_mean": 0.9361789195370743
+            }
+          }
+        },
+        "10": {
+          "aliased": false,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": 0.26636585260040385,
+              "ari_vs_truth_std": 0.011403591261062428,
+              "ari_vs_truth_all": [
+                0.25060927907949065,
+                0.25644096064797733,
+                0.276876856691341,
+                0.2677107418513298,
+                0.28019142473188036
+              ],
+              "pairwise_ari_mean": 0.8979366891448006,
+              "pairwise_ari_std": 0.058968951523247666,
+              "pairwise_ari_min": 0.7887514148137085,
+              "pairwise_vi_mean": 0.19318689263217323,
+              "posterior_agreement_mean": 0.9730705099364144
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": 0.04570142019562713,
+              "ari_vs_truth_std": 0.0024916347886810657,
+              "ari_vs_truth_all": [
+                0.044455602801286596,
+                0.044455602801286596,
+                0.05068468977298926,
+                0.044455602801286596,
+                0.044455602801286596
+              ],
+              "pairwise_ari_mean": 0.5893211039226927,
+              "pairwise_ari_std": 0.5029768717594415,
+              "pairwise_ari_min": -0.026697240193268364,
+              "pairwise_vi_mean": 0.10004255741626607,
+              "posterior_agreement_mean": 0.9757090425843085
+            }
+          }
+        },
+        "20": {
+          "aliased": false,
+          "scores": {
+            "MMD GMM": {
+              "ari_vs_truth_mean": 0.2561884380949847,
+              "ari_vs_truth_std": 0.016765275875229274,
+              "ari_vs_truth_all": [
+                0.23895506577564768,
+                0.2883464127790917,
+                0.25121357064006133,
+                0.25121357064006133,
+                0.25121357064006133
+              ],
+              "pairwise_ari_mean": 0.6717335313922621,
+              "pairwise_ari_std": 0.2649314156859893,
+              "pairwise_ari_min": 0.33361037246624625,
+              "pairwise_vi_mean": 0.41482295408935277,
+              "posterior_agreement_mean": 0.90424180440756
+            },
+            "Projected GMM-EM": {
+              "ari_vs_truth_mean": 0.045478969741132226,
+              "ari_vs_truth_std": 0.031609331089421114,
+              "ari_vs_truth_all": [
+                0.06128363528584278,
+                0.06128363528584278,
+                -0.01773969243771,
+                0.06128363528584278,
+                0.06128363528584278
+              ],
+              "pairwise_ari_mean": 0.5856043458578543,
+              "pairwise_ari_std": 0.5075289521375558,
+              "pairwise_ari_min": -0.03598913535536442,
+              "pairwise_vi_mean": 0.13205258004672518,
+              "posterior_agreement_mean": 0.966948001627497
+            }
+          }
+        }
+      },
+      "init_scheme": {
+        "kmeans++": {
+          "ari_vs_truth_mean": 0.23887099210019658,
+          "ari_vs_truth_std": 0.012139663177074218,
+          "ari_vs_truth_all": [
+            0.23310433272056014,
+            0.2344122565196298,
+            0.22458775136999518,
+            0.26059565443296967,
+            0.24165496545782827
+          ],
+          "pairwise_ari_mean": 0.769150419494659,
+          "pairwise_ari_std": 0.11712372689960984,
+          "pairwise_ari_min": 0.5737992790400578,
+          "pairwise_vi_mean": 0.3571656104637849,
+          "posterior_agreement_mean": 0.939960955498603
+        },
+        "random": {
+          "ari_vs_truth_mean": 0.26041769717808555,
+          "ari_vs_truth_std": 0.020059399416257253,
+          "ari_vs_truth_all": [
+            0.27915123155744676,
+            0.2344122565196298,
+            0.28822694684533917,
+            0.25060927907949065,
+            0.24968877188852148
+          ],
+          "pairwise_ari_mean": 0.7329461298946496,
+          "pairwise_ari_std": 0.18529223079163634,
+          "pairwise_ari_min": 0.4329744437244719,
+          "pairwise_vi_mean": 0.38662674370277383,
+          "posterior_agreement_mean": 0.9256642940481574
+        }
+      }
+    }
+  }
+}

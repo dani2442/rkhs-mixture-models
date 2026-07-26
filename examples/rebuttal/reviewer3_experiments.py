@@ -9,8 +9,11 @@ Rebuttal experiments (Reviewer 3, #xDmR), on the five real L^2 benchmarks:
                  attained objective alongside the ARI -- full covariance reaches
                  a *lower* MMD^2 and a far worse ARI, so the collapse is not an
                  optimization artifact.
-  stability   -> Q2: initialization and projection-dimension stability, scored by
-                 pairwise ARI, variation of information, and posterior agreement.
+  stability   -> Q2: empirical identifiability. Independent restarts at every
+                 projection dimension M, for our method and for the Projected
+                 GMM-EM baseline, scored by ARI vs. truth (mean_std over the
+                 restarts), pairwise ARI between restarts, variation of
+                 information, and posterior agreement.
   descent     -> W1: monotonicity of the alternating objective, under both the
                  exact scheme Proposition 4 assumes (exact simplex QP + gradient
                  step with backtracking) and the Adam optimizer actually used.
@@ -40,7 +43,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, ROOT)
 
 from src import GaussianKernel, GaussianMixtureModel, L2CosineBasis  # noqa: E402
-from src.competitors import GPmixClustering  # noqa: E402
+from src.competitors import (  # noqa: E402
+    GPmixClustering,
+    ProjectedGMMEMFixedCovarianceClustering,
+)
 from benchmarks.bench_l2_realdata import DATASET_SPECS  # noqa: E402
 
 DTYPE = torch.float64
@@ -64,13 +70,13 @@ def _save(name, payload):
 # ----------------------------------------------------------------------
 # shared helpers
 # ----------------------------------------------------------------------
-def load_dataset(loader_fn, R):
-    """Return (X_raw, standardised coefficients, basis, y, K, name, sigma)."""
-    X_np, y_true, K, name = loader_fn()
-    grid_size = X_np.shape[1]
+def build_projection(X_np, M):
+    """Project raw curves on M cosine coefficients; standardise; median bandwidth.
 
+    Returns (X, basis, sigma).
+    """
     basis = L2CosineBasis(
-        T=1.0, R=R, grid_size=grid_size, d=1, device=DEVICE, dtype=DTYPE
+        T=1.0, R=M, grid_size=X_np.shape[1], d=1, device=DEVICE, dtype=DTYPE
     )
     X_coeffs = basis.project(
         torch.tensor(X_np, device=DEVICE, dtype=DTYPE).unsqueeze(-1)
@@ -81,6 +87,13 @@ def load_dataset(loader_fn, R):
     X = (X_coeffs - mu) / sd
 
     sigma = max(float(np.median(pdist(X.cpu().numpy(), metric="euclidean"))), 1e-6)
+    return X, basis, sigma
+
+
+def load_dataset(loader_fn, R):
+    """Return (X_raw, standardised coefficients, basis, y, K, name, sigma)."""
+    X_np, y_true, K, name = loader_fn()
+    X, basis, sigma = build_projection(X_np, R)
     return X_np, X, basis, y_true, K, name, sigma
 
 
@@ -324,63 +337,159 @@ def driver_covariance(args):
 # ----------------------------------------------------------------------
 # Q2: initialization and projection-dimension stability
 # ----------------------------------------------------------------------
+def fit_projected_gmm(X, K, seed, n_init=1, max_iter=100):
+    """Projected GMM-EM (the paper's likelihood baseline) on the same coefficients."""
+    model = ProjectedGMMEMFixedCovarianceClustering(
+        n_clusters=K, n_init=n_init, max_iter=max_iter, random_state=seed
+    ).fit(X)
+    return model.labels_, model.responsibilities_
+
+
+def restart_scores(labs, resps, y):
+    """Score a set of independent restarts on one dataset at one M.
+
+    ARI vs.\ truth carries the +/- across restarts; the pairwise quantities
+    measure how far the restarts are from recovering the *same* partition,
+    which is the empirical stand-in for identifiability of the representation.
+    """
+    aris = [adjusted_rand_score(y, lab) for lab in labs]
+    pw_ari = [adjusted_rand_score(a, b) for a, b in combinations(labs, 2)]
+    pw_vi = [variation_of_information(a, b) for a, b in combinations(labs, 2)]
+    pw_pa = [posterior_agreement(a, b) for a, b in combinations(resps, 2)]
+    return {
+        "ari_vs_truth_mean": float(np.mean(aris)),
+        "ari_vs_truth_std": float(np.std(aris)),
+        "ari_vs_truth_all": [float(a) for a in aris],
+        "pairwise_ari_mean": float(np.mean(pw_ari)),
+        "pairwise_ari_std": float(np.std(pw_ari)),
+        "pairwise_ari_min": float(np.min(pw_ari)),
+        "pairwise_vi_mean": float(np.mean(pw_vi)),
+        "posterior_agreement_mean": float(np.mean(pw_pa)),
+    }
+
+
+def _fmt_pm(entry, key):
+    return (f"${entry[key + '_mean']:.3f}"
+            f"\\pmstd{{{entry[key + '_std']:.3f}}}$")
+
+
+def emit_latex(out, key="pairwise_ari"):
+    """Print the two rebuttal tabulars: one row per dataset, one column per M.
+
+    Row means average the M values that dataset admits; column means average the
+    datasets that admit that M. A dagger marks cells above the grid's Nyquist
+    limit, where the extra cosine modes are aliased rather than resolved.
+    """
+    m_grid = out["m_grid"]
+    for method in ["MMD GMM", "Projected GMM-EM"]:
+        print(f"\n% --- {method}: {key}, mean_std over "
+              f"{out['repeats']} restarts ---")
+        by_M = {M: [] for M in m_grid}
+        for name, e in out["datasets"].items():
+            cells, row = [], []
+            for M in m_grid:
+                per_m = e["per_M"].get(str(M))
+                if per_m is None:
+                    cells.append("---")
+                    continue
+                v = per_m["scores"][method][key + "_mean"]
+                row.append(v)
+                by_M[M].append(v)
+                cells.append(_fmt_pm(per_m["scores"][method], key)
+                             + (r"$^{\dagger}$" if per_m["aliased"] else ""))
+            cells.append(f"${np.mean(row):.3f}$")
+            print(f"{name} ($K{{=}}{e['K']}$) & " + " & ".join(cells) + r"\\")
+
+        means = [f"${np.mean(by_M[M]):.3f}$" if by_M[M] else "---" for M in m_grid]
+        grand = np.mean([v for M in m_grid for v in by_M[M]])
+        print(r"\midrule")
+        print("Mean & " + " & ".join(means) + f" & $\\mathbf{{{grand:.3f}}}$" + r"\\")
+
+
 def driver_stability(args):
     print("=" * 70)
-    print(f"Q2: stability across {args.restarts} restarts and over M")
+    print(f"Q2: empirical identifiability -- {args.restarts} restarts per "
+          f"(dataset, M), M in {args.m_grid}")
     print("=" * 70)
 
-    out = {}
-    for loader_fn, R in DATASET_SPECS:
-        X_raw, X, basis, y, K, name, sigma = load_dataset(loader_fn, R)
-        print(f"\n--- {name} (M={X.shape[1]}, K={K}) ---")
-        kernel = GaussianKernel(sigma=sigma)
-        entry = {}
+    out = {
+        "m_grid": args.m_grid,
+        "repeats": args.restarts,
+        "seed0": SEED,
+        "em_n_init": args.em_n_init,
+        "datasets": {},
+    }
 
+    for loader_fn, R in DATASET_SPECS:
+        X_np, y, K, name = loader_fn()
+        # Phi is (grid_size x M): above M = grid_size the cosine design is rank
+        # deficient and the projection is not injective, so those M are refused.
+        # Between grid_size/2 and grid_size it is full rank but the extra modes
+        # are aliased rather than resolved; those cells are kept and flagged.
+        grid = X_np.shape[1]
+        m_max, nyquist = grid, grid // 2
+        print(f"\n--- {name} (n={X_np.shape[0]}, grid={grid}, K={K}, "
+              f"default M={R}, M<={m_max}, Nyquist M<={nyquist}) ---")
+        entry = {
+            "K": K, "n": int(X_np.shape[0]), "grid_size": int(grid),
+            "M_default": R, "M_max": m_max, "M_nyquist": nyquist,
+            "per_M": {}, "init_scheme": {},
+        }
+
+        for M in args.m_grid:
+            if M > m_max:
+                print(f"  M={M:<3} refused (rank deficient: only {grid} grid points)")
+                continue
+            X, basis, sigma = build_projection(X_np, M)
+            kernel = GaussianKernel(sigma=sigma)
+
+            runs = {"MMD GMM": ([], []), "Projected GMM-EM": ([], [])}
+            for s in range(args.restarts):
+                lab, (_, resp) = fit_mmd_gmm(
+                    X, basis, K, kernel, seed=SEED + s, return_model=True
+                )
+                runs["MMD GMM"][0].append(lab)
+                runs["MMD GMM"][1].append(resp)
+
+                lab_em, resp_em = fit_projected_gmm(
+                    X, K, seed=SEED + s, n_init=args.em_n_init
+                )
+                runs["Projected GMM-EM"][0].append(lab_em)
+                runs["Projected GMM-EM"][1].append(resp_em)
+
+            scores = {m: restart_scores(labs, resps, y)
+                      for m, (labs, resps) in runs.items()}
+            entry["per_M"][str(M)] = {"aliased": M > nyquist, "scores": scores}
+            for m, e in scores.items():
+                print(f"  M={M:<3}{'*' if M > nyquist else ' '}{m:<17} "
+                      f"ARI={e['ari_vs_truth_mean']:.3f}"
+                      f"+/-{e['ari_vs_truth_std']:.3f}  "
+                      f"pairwise ARI={e['pairwise_ari_mean']:.3f}"
+                      f"+/-{e['pairwise_ari_std']:.3f}  "
+                      f"VI={e['pairwise_vi_mean']:.2f}  "
+                      f"post.agree={e['posterior_agreement_mean']:.3f}")
+
+        # Initialization scheme, at the projection dimension the paper uses.
+        X, basis, sigma = build_projection(X_np, R)
+        kernel = GaussianKernel(sigma=sigma)
         for init in ["kmeans++", "random"]:
-            labs, resps, aris = [], [], []
+            labs, resps = [], []
             for s in range(args.restarts):
                 lab, (_, resp) = fit_mmd_gmm(
                     X, basis, K, kernel, seed=SEED + s, init=init, return_model=True
                 )
                 labs.append(lab)
                 resps.append(resp)
-                aris.append(adjusted_rand_score(y, lab))
-            pw_ari = [adjusted_rand_score(a, b) for a, b in combinations(labs, 2)]
-            pw_vi = [variation_of_information(a, b) for a, b in combinations(labs, 2)]
-            pw_pa = [posterior_agreement(a, b) for a, b in combinations(resps, 2)]
-            entry[init] = {
-                "ari_vs_truth_mean": float(np.mean(aris)),
-                "ari_vs_truth_std": float(np.std(aris)),
-                "pairwise_ari_mean": float(np.mean(pw_ari)),
-                "pairwise_ari_min": float(np.min(pw_ari)),
-                "pairwise_vi_mean": float(np.mean(pw_vi)),
-                "posterior_agreement_mean": float(np.mean(pw_pa)),
-            }
-            e = entry[init]
-            print(f"  init={init:<9} ARI(truth)={e['ari_vs_truth_mean']:.3f}"
+            e = restart_scores(labs, resps, y)
+            entry["init_scheme"][init] = e
+            print(f"  init={init:<9} (M={R}) ARI={e['ari_vs_truth_mean']:.3f}"
                   f"+/-{e['ari_vs_truth_std']:.3f}  "
-                  f"pairwise ARI={e['pairwise_ari_mean']:.3f}  "
-                  f"VI={e['pairwise_vi_mean']:.3f}  "
-                  f"post.agree={e['posterior_agreement_mean']:.3f}")
+                  f"pairwise ARI={e['pairwise_ari_mean']:.3f}")
 
-        m_grid = [m for m in args.m_grid if m <= X_raw.shape[1] // 2]
-        m_labels, m_aris = {}, {}
-        for M in m_grid:
-            _, Xm, basis_m, _, _, _, sigma_m = load_dataset(loader_fn, M)
-            m_labels[M] = fit_mmd_gmm(Xm, basis_m, K, GaussianKernel(sigma=sigma_m))
-            m_aris[M] = adjusted_rand_score(y, m_labels[M])
-        pw_m = [adjusted_rand_score(m_labels[a], m_labels[b])
-                for a, b in combinations(m_grid, 2)]
-        entry["projection_dim"] = {
-            "M_grid": m_grid,
-            "ari_vs_truth": m_aris,
-            "pairwise_ari_across_M_mean": float(np.mean(pw_m)) if pw_m else float("nan"),
-        }
-        print("  over M: " + ", ".join(f"M={m}:{m_aris[m]:.3f}" for m in m_grid)
-              + f"  | pairwise ARI across M="
-                f"{entry['projection_dim']['pairwise_ari_across_M_mean']:.3f}")
-        out[name] = entry
+        out["datasets"][name] = entry
 
+    emit_latex(out, "ari_vs_truth")
+    emit_latex(out, "pairwise_ari")
     _save("r3_stability.json", out)
 
 
@@ -495,8 +604,16 @@ def main():
                    help="indices into DATASET_SPECS for the objective check")
 
     p = sub.add_parser("stability")
-    p.add_argument("--restarts", type=int, default=10)
-    p.add_argument("--m-grid", type=int, nargs="+", default=[5, 10, 15, 20, 30])
+    p.add_argument("--restarts", type=int, default=5,
+                   help="independent restarts per (dataset, M); gives the +/-")
+    p.add_argument("--m-grid", type=int, nargs="+", default=[1, 5, 10, 20],
+                   help="spans the whole usable range, from the single-direction "
+                        "projection (M=1) to the widest dimension every dataset "
+                        "admits: Waveform is sampled on 21 points, so M=30 would "
+                        "make its cosine design rank deficient and is refused")
+    p.add_argument("--em-n-init", type=int, default=1,
+                   help="n_init for the Projected GMM-EM baseline; 1 keeps each "
+                        "restart an independent run, as for our method")
 
     p = sub.add_parser("descent")
     p.add_argument("--steps", type=int, default=300)

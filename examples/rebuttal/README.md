@@ -38,7 +38,7 @@ Run from anywhere (paths resolve relative to the repo root):
 |---|---|---|
 | `reviewer3_experiments.py` | `gpmix` | GPmix swept over its own basis/n_proj grid, plus a feature-space GMM (EM, full cov.) on the same coefficients (W3) → `results/r3_gpmix.json` |
 | | `covariance` | Full vs diagonal vs spherical covariance, with the attained objective alongside the ARI (Q1) → `results/r3_covariance.json` |
-| | `stability` | Pairwise ARI / VI / posterior agreement over 10 restarts, and over M (Q2) → `results/r3_stability.json` |
+| | `stability` | Empirical identifiability: 5 restarts per (dataset, M) for M ∈ {1,5,10,20} — M=1 is the degenerate control where the projection is maximally non-injective — for our method *and* the Projected GMM-EM baseline, scored by ARI ± std vs. truth, pairwise ARI / VI / posterior agreement between restarts; prints the two rebuttal tabulars (Q2) → `results/r3_stability.json` |
 | | `descent` | Monotonicity of the objective under the exact scheme of Prop. 4 vs Adam (W1) → `results/r3_descent.json` |
 
 GPmix is *also* a permanent competitor (`src/competitors/gpmix.py`), registered in
