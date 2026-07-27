@@ -269,7 +269,7 @@ The `benchmarks/` directory compares the MMD Gaussian mixture against classical 
 | Script | What it benchmarks |
 |--------|--------------------|
 | [`benchmarks/bench_l2_synthetic.py`](benchmarks/bench_l2_synthetic.py) | Synthetic $L^2([0,1]; \mathbb{R}^d)$ datasets |
-| [`benchmarks/bench_l2_realdata.py`](benchmarks/bench_l2_realdata.py) | Real functional datasets (e.g. `aeon` / `cfda`) |
+| [`benchmarks/bench_l2_realdata.py`](benchmarks/bench_l2_realdata.py) | Real scalar- and vector-valued functional datasets (including Canadian Weather) |
 | [`benchmarks/bench_l2_glucodensity.py`](benchmarks/bench_l2_glucodensity.py) | CGM glucodensity curves |
 | [`benchmarks/bench_l2_skeleton.py`](benchmarks/bench_l2_skeleton.py) | NTU RGB+D skeleton sequences |
 | [`benchmarks/bench_so3.py`](benchmarks/bench_so3.py) | SO(3) rotation data |

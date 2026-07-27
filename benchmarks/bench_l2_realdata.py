@@ -2,9 +2,9 @@
 """
 Benchmark: L² real-world functional data clustering.
 
-Loads 5 real/classic functional datasets, projects each onto an L² cosine
+Loads 6 real/classic functional datasets, projects each onto an L² cosine
 basis, runs all applicable clustering methods, and reports ARI statistics
-(mean ± std across the 5 datasets).
+(mean ± std across the datasets).
 """
 
 import os
@@ -54,7 +54,7 @@ DATA_DIR = Path("data")
 
 # ──────────────────────────────────────────────────────────────────────
 # Dataset loaders — each returns (X_np, y, K, name)
-#   X_np: (n_samples, grid_size)  float64
+#   X_np: (n_samples, grid_size) or (n_samples, grid_size, d) float64
 #   y:    (n_samples,)            int labels
 #   K:    int                     number of clusters
 # ──────────────────────────────────────────────────────────────────────
@@ -68,6 +68,16 @@ def _load_growth():
         X = X[..., 0]
     y = np.asarray(y, dtype=int)
     return X, y, 2, "Growth"
+
+
+def _load_weather():
+    """Load the vector-valued Canadian Weather functional dataset."""
+    from skfda.datasets import fetch_weather
+
+    fd, y = fetch_weather(return_X_y=True)
+    X = np.asarray(fd.data_matrix, dtype=float)
+    y = np.asarray(y, dtype=int)
+    return X, y, len(np.unique(y)), "Canadian Weather"
 
 
 def _load_waveform():
@@ -207,6 +217,7 @@ def _reassign_noise(labels, X_np):
 
 DATASET_SPECS = [
     (_load_growth,   15),
+    (_load_weather,  15),
     (_load_waveform, 10),
     (_load_phoneme,  15),
     (_load_kneading, 15),
@@ -275,15 +286,28 @@ def main():
             print(f"\n--- Skipping dataset (load failed: {e}) ---")
             continue
 
+        if X_np.ndim == 2:
+            X_np = X_np[..., None]
+        if X_np.ndim != 3:
+            print(
+                f"\n--- Skipping {ds_name} "
+                f"(expected shape (n, grid[, d]), got {X_np.shape}) ---"
+            )
+            continue
+
         grid_size = X_np.shape[1]
+        d = X_np.shape[2]
         N = X_np.shape[0]
-        print(f"\n--- {ds_name} (n={N}, grid={grid_size}, K={K}, R={R}) ---")
+        print(
+            f"\n--- {ds_name} "
+            f"(n={N}, grid={grid_size}, d={d}, K={K}, R={R}) ---"
+        )
 
         # Project onto L2 cosine basis
         basis = L2CosineBasis(
-            T=1.0, R=R, grid_size=grid_size, d=1, device=device, dtype=dtype
+            T=1.0, R=R, grid_size=grid_size, d=d, device=device, dtype=dtype
         )
-        X_tensor = torch.tensor(X_np, device=device, dtype=dtype).unsqueeze(-1)
+        X_tensor = torch.tensor(X_np, device=device, dtype=dtype)
         X_coeffs = basis.project(X_tensor)
 
         # Normalize coefficients
@@ -371,6 +395,7 @@ def main():
                 elif name == "GPmix":
                     # GPmix does its own smoothing/projection, so it takes the
                     # raw curves on the grid rather than the cosine coefficients.
+                    # Our re-implementation also handles vector-valued (d>1) curves.
                     pred = method.fit_predict(X_np)
                 else:
                     pred = method.fit_predict(X)

@@ -38,7 +38,7 @@ Run from anywhere (paths resolve relative to the repo root):
 
 | Script | Command | Backs |
 |---|---|---|
-| `reviewer3_experiments.py` | `gpmix` | GPmix swept over its own basis/n_proj grid, plus a feature-space GMM (EM, full cov.) on the same coefficients (W3) → `results/r3_gpmix.json` |
+| `reviewer3_experiments.py` | `gpmix` | Multivariate GPmix (our self-contained re-implementation, `src/competitors/gpmix.py`) swept over its own basis/n_proj grid, plus MMD GMM (Gaussian/Polynomial), Projected GMM and a feature-space GMM (EM, full cov.) on the same coefficients, over all six L² datasets incl. the vector-valued Canadian Weather (d=2) (W3) → `results/r3_gpmix.json` |
 | | `covariance` | Full vs diagonal vs spherical covariance, with the attained objective alongside the ARI (Q1) → `results/r3_covariance.json` |
 | | `stability` | Empirical identifiability: 5 restarts per (dataset, M) for M ∈ {1,5,10,20} — M=1 is the degenerate control where the projection is maximally non-injective — for our method *and* the Projected GMM-EM baseline, scored by ARI ± std vs. truth, pairwise ARI / VI / posterior agreement between restarts; prints the two rebuttal tabulars (Q2) → `results/r3_stability.json` |
 | | `descent` | Monotonicity of the objective under the exact scheme of Prop. 4 vs Adam (W1) → `results/r3_descent.json` |
@@ -121,12 +121,15 @@ bandwidth heuristic, not of the mixture model; `reviewer2_bandwidth.py` sweeps �
 across all three scenarios, including the well-separated control that is unaffected.
 
 **Three results that went against the paper (R3).** They are reported in the
-rebuttal as found, not filtered. (1) GPmix is not beaten: at its reference config
-it scores 0.288 against our 0.412, but its best *single* config scores 0.393 — a
-tie — and oracle-tuned per dataset it reaches 0.491. (2) A plain EM Gaussian
-mixture on the *same* cosine coefficients scores 0.459, beating us on L². (3) Full
-covariances reach a strictly *lower* MMD² than diagonal ones on every dataset
-while their ARI collapses from 0.412 to 0.043; `covariance` re-checks this across
+rebuttal as found, not filtered. Numbers below are over all six L² datasets
+(including the vector-valued Canadian Weather, d=2, on which GPmix runs through
+our multivariate re-implementation). (1) GPmix stays close: at its reference
+config (fpc-8) it scores 0.247 against our 0.400, its best *single* config
+(rl-fpc-12) scores 0.364, and oracle-tuned per dataset it reaches 0.494 — GPmix
+wins only on Growth. (2) A plain EM Gaussian mixture on the *same* cosine
+coefficients scores 0.451, beating us on L². (3) Full covariances reach a
+strictly *lower* MMD² than diagonal ones on every dataset while their ARI
+collapses from 0.400 to 0.063; `covariance` re-checks this across
 learning rates and epoch budgets precisely because the obvious explanation — an
 optimizer failure — is the wrong one. The diagonal restriction is acting as an
 implicit regularizer, and distributional fit and cluster recovery are in tension.

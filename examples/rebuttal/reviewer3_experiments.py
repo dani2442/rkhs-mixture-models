@@ -42,7 +42,12 @@ from sklearn.mixture import GaussianMixture
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 
-from src import GaussianKernel, GaussianMixtureModel, L2CosineBasis  # noqa: E402
+from src import (  # noqa: E402
+    GaussianKernel,
+    GaussianMixtureModel,
+    L2CosineBasis,
+    PolynomialKernel,
+)
 from src.competitors import (  # noqa: E402
     GPmixClustering,
     ProjectedGMMEMFixedCovarianceClustering,
@@ -71,16 +76,22 @@ def _save(name, payload):
 # shared helpers
 # ----------------------------------------------------------------------
 def build_projection(X_np, M):
-    """Project raw curves on M cosine coefficients; standardise; median bandwidth.
+    """Project raw curves on M cosine modes per channel; standardise; median bandwidth.
+
+    Handles scalar ``(n, grid)`` and vector-valued ``(n, grid, d)`` curves alike;
+    for the latter the coefficient dimension is ``M * d`` (M modes per channel),
+    so ``M`` keeps its meaning as the time-resolution of the projection.
 
     Returns (X, basis, sigma).
     """
+    X_np = np.asarray(X_np, dtype=float)
+    if X_np.ndim == 2:
+        X_np = X_np[..., None]
+    grid, d = X_np.shape[1], X_np.shape[2]
     basis = L2CosineBasis(
-        T=1.0, R=M, grid_size=X_np.shape[1], d=1, device=DEVICE, dtype=DTYPE
+        T=1.0, R=M, grid_size=grid, d=d, device=DEVICE, dtype=DTYPE
     )
-    X_coeffs = basis.project(
-        torch.tensor(X_np, device=DEVICE, dtype=DTYPE).unsqueeze(-1)
-    )
+    X_coeffs = basis.project(torch.tensor(X_np, device=DEVICE, dtype=DTYPE))
 
     mu = X_coeffs.mean(dim=0, keepdim=True)
     sd = X_coeffs.std(dim=0, keepdim=True).clamp(min=1e-8)
@@ -198,12 +209,27 @@ def driver_gpmix(args):
         labels = fit_mmd_gmm(X, basis, K, GaussianKernel(sigma=sigma))
         entry["MMD GMM (Gaussian)"] = adjusted_rand_score(y, labels)
 
+        labels_p = fit_mmd_gmm(X, basis, K, PolynomialKernel(degree=2, c=1.0))
+        entry["MMD GMM (Polynomial)"] = adjusted_rand_score(y, labels_p)
+
+        em_labels = ProjectedGMMEMFixedCovarianceClustering(
+            n_clusters=K, n_init=3, max_iter=100, random_state=SEED,
+        ).fit_predict(X)
+        entry["Projected GMM"] = adjusted_rand_score(y, em_labels)
+
         entry["Feature GMM (EM, full)"] = adjusted_rand_score(
             y,
             GaussianMixture(
                 n_components=K, covariance_type="full", n_init=10, random_state=SEED
             ).fit_predict(X.cpu().numpy()),
         )
+
+        # Smooth once per dataset (independent of basis/n_proj) and reuse across
+        # the sweep, so GPmix's GCV B-spline smoothing is not repaid 25 times.
+        gp0 = GPmixClustering(n_clusters=K, random_state=SEED)
+        X_gp = gp0._as_array(X_raw)
+        t_grid = np.linspace(0.0, 1.0, X_gp.shape[1])
+        X_gp = gp0._smooth(X_gp, t_grid)
 
         # Sweep GPmix's own hyperparameters so the comparison is not a strawman.
         per_cfg = {}
@@ -212,8 +238,8 @@ def driver_gpmix(args):
                 t0 = time.perf_counter()
                 pred = GPmixClustering(
                     n_clusters=K, basis_type=basis_type, n_proj=n_proj,
-                    random_state=SEED,
-                ).fit_predict(X_raw)
+                    smoother_basis=None, random_state=SEED,
+                ).fit_predict(X_gp)
                 ari = adjusted_rand_score(y, pred)
                 dt = time.perf_counter() - t0
             except Exception as e:  # some bases fail on short grids
@@ -257,7 +283,7 @@ def driver_gpmix(args):
     }
     out["summary"] = summary
 
-    print("\nMean ARI over the five datasets")
+    print(f"\nMean ARI over the {len(order)} datasets")
     print(f"  GPmix, reference cfg (fpc-8)        {summary['gpmix_reference_mean']:.3f}")
     print(f"  GPmix, best single cfg ({best_single:<11}) {cfg_means[best_single][0]:.3f}")
     print(f"  GPmix, oracle cfg per dataset       {summary['gpmix_oracle_mean']:.3f}  (upper bound, uses labels)")
@@ -265,6 +291,32 @@ def driver_gpmix(args):
     print(f"  Feature GMM (EM, full covariance)   {summary['feature_gmm_mean']:.3f}")
 
     _save("r3_gpmix.json", out)
+    _emit_gpmix_latex(out, order, best_single)
+
+
+def _emit_gpmix_latex(out, order, best_single):
+    """Print the W3/Q1 comparison table (one column per dataset, best-fixed GPmix)."""
+    rows = ["MMD GMM (Gaussian)", "MMD GMM (Polynomial)", "Projected GMM"]
+    print("\n% --- W3/Q1 GPmix comparison table (best single GPmix cfg = "
+          f"{best_single}) ---")
+    header = "Method & " + " & ".join(order) + " & Mean"
+    print(header + r" \\")
+    # our-method rows: bold the per-column and mean best across *all four* rows
+    table = {r: [out["per_dataset"][d][r] for d in order] for r in rows}
+    table["GPmix"] = list(out["summary"]["gpmix_best_single"][2])
+    means = {r: float(np.mean(v)) for r, v in table.items()}
+    all_rows = rows + ["GPmix"]
+    col_best = [max(all_rows, key=lambda r: table[r][j]) for j in range(len(order))]
+    mean_best = max(all_rows, key=lambda r: means[r])
+    for r in all_rows:
+        cells = []
+        for j in range(len(order)):
+            s = f"{table[r][j]:.3f}"
+            cells.append(f"\\textbf{{{s}}}" if col_best[j] == r else s)
+        m = f"{means[r]:.3f}"
+        cells.append(f"\\textbf{{{m}}}" if mean_best == r else m)
+        label = r if r != "GPmix" else f"GPmix ({best_single})"
+        print(f"{label} & " + " & ".join(cells) + r" \\")
 
 
 # ----------------------------------------------------------------------
