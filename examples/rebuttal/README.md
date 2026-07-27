@@ -18,6 +18,8 @@ Run from anywhere (paths resolve relative to the repo root):
 | `reviewer1_cgm_elbow.py` | — | Within-cluster MMD² vs K for all three CGM representations — intraday H¹ curves, Sym(24) correlation matrices, and patient-similarity graph signals (W1/Q1). Needs `data/glucodensities/`. → `results/cgm_elbow.json` |
 | `reviewer1_plot_elbow.py` | — | Replots the above as three panels → `paper/images/rebuttal_cgm_elbow.pdf` |
 | `reviewer1_synthetic.py` | `largek` | ARI/runtime/memory/stability for K ∈ {5,…,500}, up to n = 10⁶ (W2) → `results/largek.json` |
+| | `largek-iso --mode nk` | Controlled K sweep isolating K with n/K = 500 fixed (W2) → `results/largek_nk.json` |
+| | `largek-iso --mode nfixed` | Controlled K sweep isolating K with n = 10⁵ fixed (W2) → `results/largek_nfixed.json` |
 | | `runtime` | Runtime scaling in n (≤10⁵), M (≤10³), K (≤500) (W3) → `paper/images/rebuttal_runtime_scaling.pdf`. `--plot_only` redraws from the recorded JSON |
 | | `icl` | Finite-M ICL vs the MMD elbow (Q2) → `paper/images/rebuttal_icl.pdf` |
 | | `verify` | Checks the matmul evaluation used by `largek`/`runtime` against the released `compute_J_diag` (see below) → `results/largek_verify.json` |
@@ -57,6 +59,17 @@ representations produce a sharp knee: the first relative drop is −36% (correla
 −49% (graph) against −8%/−32% for the next component, while the intraday curve falls by
 22–45% at *every* step and singles out no K. The rebuttal says so rather than claiming a
 knee at the reported K.
+
+**Isolating K (R1, W2).** The reviewer noted that `largek` varies K and n together, so
+large-K columns also have more observations per component and are statistically easier.
+`largek-iso` re-runs the same K grid ({5,10,20,50,100,200}, M=20, diagonal cov., 200
+epochs, 5 k-means++ restarts, same separation/generation) twice: `--mode nk` holds
+n/K = 500 fixed, `--mode nfixed` holds n = 10⁵ fixed. Each K is fitted in its own
+subprocess so the reported memory is that fit's incremental (above-baseline) RSS. Reported
+per K: ARI mean ± std across restarts, median time per fit, peak incremental memory. With
+n/K fixed the mean ARI does not degrade with K (≥ 0.966 throughout); the two sweeps agree
+at K = 200, n = 10⁵. Both use the same single-block matmul path below (no chunking or
+subsampling at any grid point).
 
 **Reaching K = 200 / n = 10⁵ (R1, W2 and W3).** `GaussianKernel.compute_J_diag`
 materialises an `(n, K, M)` difference tensor, which needs 3.2 GB at

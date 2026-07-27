@@ -250,12 +250,15 @@ def run_largek_single(K, n_per, M, restarts, epochs, lr, seed, sep=6.0, std=0.35
     peak_mb = peak_kb / 1024.0
     return {
         "K": K, "n": int(X.shape[0]), "M": M,
+        "n_per": int(n_per),
         "ari": float(np.max(aris)),            # best restart
-        "ari_mean": float(np.mean(aris)),
+        "ari_mean": float(np.mean(aris)),       # mean across restarts
+        "ari_std": float(np.std(aris)),         # spread across restarts
         "runtime_s": float(np.median(times)),  # per fit
+        "runtime_mean_s": float(np.mean(times)),
         "mmd2_std": float(np.std(mmds)),        # stability across restarts
         "peak_rss_mb": peak_mb,
-        "peak_extra_mb": max(0.0, peak_mb - base_mb),  # above interpreter baseline
+        "peak_extra_mb": max(0.0, peak_mb - base_mb),  # incremental (above baseline)
     }
 
 
@@ -289,6 +292,63 @@ def driver_largek(args):
     print("PeakMB:   ", fmt(rows, "peak_rss_mb", "{:.0f}"))
     print("ExtraMB:  ", fmt(rows, "peak_extra_mb", "{:.1f}"))
     print("MMD2 std: ", fmt(rows, "mmd2_std", "{:.1e}"))
+
+
+# ----------------------------------------------------------------------
+# W2 (controlled): isolate the effect of K.
+#
+# The reviewer noted that the original table varies K and n together, so the
+# large-K columns also have more observations per component and are thus
+# statistically easier.  To isolate K we run two sweeps over the *same* K grid,
+# with fixed separation, dimension, epochs and restarts, and an identical
+# data-generation procedure for every K:
+#   nfixed : n = args.n_total held constant  (n/K shrinks as K grows)
+#   nk     : n/K = args.n_per held constant  (observations per component fixed)
+# Each K is fitted in its own subprocess so peak_extra_mb is the incremental
+# (above-baseline) RSS of that fit alone.
+# ----------------------------------------------------------------------
+def _run_controlled_sweep(args, plan, out_name, title):
+    import subprocess
+    rows = []
+    for K, n_per in plan:
+        cmd = [sys.executable, os.path.abspath(__file__), "largek-single",
+               "--K", str(K), "--n_per", str(n_per), "--M", str(args.M),
+               "--restarts", str(args.restarts), "--epochs", str(args.epochs),
+               "--lr", str(args.lr), "--seed", str(args.seed),
+               "--sep", str(args.sep), "--std", str(args.std)]
+        out = subprocess.check_output(cmd, text=True)
+        row = json.loads(out.strip().splitlines()[-1])
+        rows.append(row)
+        print("  ", row, flush=True)
+    with open(os.path.join(RESULTS, out_name), "w") as f:
+        json.dump(rows, f, indent=2)
+
+    def fmt(rows, key, f="{:.3g}"):
+        return " & ".join(f.format(r[key]) for r in rows)
+    print(f"\n=== LaTeX ({title}) ===")
+    print("K:            ", " & ".join(str(r["K"]) for r in rows))
+    print("n:            ", " & ".join(str(r["n"]) for r in rows))
+    print("n/K:          ", " & ".join("{:.0f}".format(r["n"] / r["K"]) for r in rows))
+    print("ARI mean:     ", fmt(rows, "ari_mean", "{:.3f}"))
+    print("ARI std:      ", fmt(rows, "ari_std", "{:.1e}"))
+    print("Time/fit [s]: ", fmt(rows, "runtime_s", "{:.2f}"))
+    print("Incr. MB:     ", fmt(rows, "peak_extra_mb", "{:.0f}"))
+    return rows
+
+
+def driver_largek_iso(args):
+    K_grid = [int(k) for k in args.k_grid.split(",")]
+    if args.mode == "nfixed":
+        # n held constant; n_per = n_total // K (all grid values divide n_total)
+        plan = [(K, args.n_total // K) for K in K_grid]
+        out_name = "largek_nfixed.json"
+        title = f"n = {args.n_total} fixed"
+    else:  # nk
+        # observations per component held constant; n = n_per * K grows with K
+        plan = [(K, args.n_per) for K in K_grid]
+        out_name = "largek_nk.json"
+        title = f"n/K = {args.n_per} fixed"
+    _run_controlled_sweep(args, plan, out_name, title)
 
 
 # ----------------------------------------------------------------------
@@ -481,6 +541,21 @@ def main():
     p.add_argument("--sep", type=float, default=6.0)
     p.add_argument("--std", type=float, default=0.35)
 
+    p = sub.add_parser("largek-iso",
+                       help="controlled K sweep that isolates K (n fixed or n/K fixed)")
+    p.add_argument("--mode", choices=["nfixed", "nk"], default="nfixed",
+                   help="nfixed: n=--n_total constant; nk: n/K=--n_per constant")
+    p.add_argument("--k_grid", type=str, default="5,10,20,50,100,200")
+    p.add_argument("--n_total", type=int, default=100000)  # used by mode=nfixed
+    p.add_argument("--n_per", type=int, default=500)        # used by mode=nk
+    p.add_argument("--M", type=int, default=20)
+    p.add_argument("--restarts", type=int, default=5)
+    p.add_argument("--epochs", type=int, default=200)
+    p.add_argument("--lr", type=float, default=0.05)
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--sep", type=float, default=6.0)
+    p.add_argument("--std", type=float, default=0.35)
+
     p = sub.add_parser("runtime")
     p.add_argument("--epochs", type=int, default=200)
     p.add_argument("--lr", type=float, default=0.05)
@@ -509,6 +584,8 @@ def main():
             sep=args.sep, std=args.std)))
     elif args.cmd == "largek":
         driver_largek(args)
+    elif args.cmd == "largek-iso":
+        driver_largek_iso(args)
     elif args.cmd == "runtime":
         driver_runtime(args)
     elif args.cmd == "icl":
