@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 """
-Rebuttal experiments (Reviewer 1), self-contained synthetic part:
+Synthetic mixture experiments for scalability and model selection:
 
-  largek   -> W2: large number of clusters (ARI / runtime / memory / stability)
-  runtime  -> W3: runtime scaling curves in n, M, K
-  icl      -> Q2: finite-M ICL vs MMD elbow on a synthetic Hilbert-space mixture
+  largek   -> large number of clusters (ARI / runtime / memory / stability)
+  runtime  -> runtime scaling curves in n, M, K
+  icl      -> finite-M ICL vs MMD elbow on a synthetic Hilbert-space mixture
 
 Uses the paper's own GaussianMixtureModel / GaussianKernel and MMD fitting.
 Gaussian measures live in R^M (a finite-dim Hilbert space); the identity basis
@@ -13,12 +13,14 @@ is used, so no reconstruction basis is required for fitting.
 import argparse
 import json
 import os
+import platform
 import resource
 import sys
 import time
 
 import numpy as np
 import torch
+from threadpoolctl import threadpool_info, threadpool_limits
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 RESULTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
@@ -50,9 +52,13 @@ def make_mixture(K, M, n_per, sep=3.0, std=0.4, seed=0):
     return X[perm], y[perm].numpy()
 
 
-def median_sigma(X, max_samples=800):
+def median_sigma(X, max_samples=800, *, seed=0):
+    """Sample bandwidth points independently of initialization and global RNG state."""
     with torch.no_grad():
-        Xs = X if X.shape[0] <= max_samples else X[torch.randperm(X.shape[0])[:max_samples]]
+        generator = torch.Generator(device=X.device).manual_seed(seed)
+        Xs = X if X.shape[0] <= max_samples else X[
+            torch.randperm(X.shape[0], generator=generator, device=X.device)[:max_samples]
+        ]
         d = torch.cdist(Xs, Xs)
         iu = torch.triu_indices(d.shape[0], d.shape[1], 1)
         pos = d[iu[0], iu[1]]
@@ -179,6 +185,7 @@ def fit_once_fast(X, K, sigma, epochs, lr, seed):
 def driver_verify(args):
     """Check the matmul path against the released compute_J_diag."""
     from sklearn.metrics import adjusted_rand_score
+    torch.manual_seed(0)
     rows = []
     for K, n_per, M in [(5, 40, 20), (10, 40, 20), (20, 40, 20), (5, 200, 50)]:
         X, y = make_mixture(K, M, n_per, sep=6.0, std=0.35, seed=0)
@@ -207,6 +214,9 @@ def driver_verify(args):
         }
         rows.append(row)
         print("  ", row, flush=True)
+        assert rel < 1e-10, row
+        assert row["abs_diff_mmd2"] < 1e-10, row
+        assert np.array_equal(ref_pred, new_pred), row
 
     # the row-blocked path must reproduce the single-block one
     global CHUNK_CELLS
@@ -225,13 +235,15 @@ def driver_verify(args):
     }
     rows.append(row)
     print("  ", row, flush=True)
+    assert row["abs_diff_mmd2"] < 1e-10, row
+    assert np.array_equal(full_pred, chunk_pred), row
 
     with open(os.path.join(RESULTS, "largek_verify.json"), "w") as f:
         json.dump(rows, f, indent=2)
 
 
 # ----------------------------------------------------------------------
-# W2: large number of clusters (single K, meant to run in a subprocess)
+# Large number of clusters (single K, meant to run in a subprocess)
 # ----------------------------------------------------------------------
 def run_largek_single(K, n_per, M, restarts, epochs, lr, seed, sep=6.0, std=0.35):
     from sklearn.metrics import adjusted_rand_score
@@ -239,7 +251,7 @@ def run_largek_single(K, n_per, M, restarts, epochs, lr, seed, sep=6.0, std=0.35
     proc = psutil.Process()
     base_mb = proc.memory_info().rss / (1024.0 ** 2)  # before data/fit
     X, y = make_mixture(K, M, n_per, sep=sep, std=std, seed=seed)
-    sigma = median_sigma(X)
+    sigma = median_sigma(X, seed=seed)
     mmds, aris, times = [], [], []
     for r in range(restarts):
         final_mmd, pred, dt, _, _ = fit_once_fast(X, K, sigma, epochs, lr, seed + 1000 * r)
@@ -259,6 +271,25 @@ def run_largek_single(K, n_per, M, restarts, epochs, lr, seed, sep=6.0, std=0.35
         "mmd2_std": float(np.std(mmds)),        # stability across restarts
         "peak_rss_mb": peak_mb,
         "peak_extra_mb": max(0.0, peak_mb - base_mb),  # incremental (above baseline)
+        "sigma": sigma,
+        "seed": seed,
+        "bandwidth_seed": seed,
+        "initialization_seeds": [seed + 1000 * r for r in range(restarts)],
+        "epochs": epochs,
+        "lr": lr,
+        "sep": sep,
+        "std": std,
+        "ari_per_restart": aris,
+        "runtime_per_restart_s": times,
+        "objective_per_restart": mmds,
+        "environment": {
+            "python": platform.python_version(),
+            "platform": platform.platform(),
+            "numpy": np.__version__,
+            "torch": torch.__version__,
+            "torch_threads": torch.get_num_threads(),
+            "threadpools": threadpool_info(),
+        },
     }
 
 
@@ -274,7 +305,8 @@ def driver_largek(args):
                "--K", str(K), "--n_per", str(n_per), "--M", str(args.M),
                "--restarts", str(args.restarts), "--epochs", str(args.epochs),
                "--lr", str(args.lr), "--seed", str(args.seed),
-               "--sep", str(args.sep), "--std", str(args.std)]
+               "--sep", str(args.sep), "--std", str(args.std),
+               "--threads", str(args.threads)]
         out = subprocess.check_output(cmd, text=True)
         row = json.loads(out.strip().splitlines()[-1])
         rows.append(row)
@@ -295,9 +327,9 @@ def driver_largek(args):
 
 
 # ----------------------------------------------------------------------
-# W2 (controlled): isolate the effect of K.
+# Controlled sweeps: isolate the effect of K.
 #
-# The reviewer noted that the original table varies K and n together, so the
+# The original largek sweep varies K and n together, so the
 # large-K columns also have more observations per component and are thus
 # statistically easier.  To isolate K we run two sweeps over the *same* K grid,
 # with fixed separation, dimension, epochs and restarts, and an identical
@@ -315,7 +347,8 @@ def _run_controlled_sweep(args, plan, out_name, title):
                "--K", str(K), "--n_per", str(n_per), "--M", str(args.M),
                "--restarts", str(args.restarts), "--epochs", str(args.epochs),
                "--lr", str(args.lr), "--seed", str(args.seed),
-               "--sep", str(args.sep), "--std", str(args.std)]
+               "--sep", str(args.sep), "--std", str(args.std),
+               "--threads", str(args.threads)]
         out = subprocess.check_output(cmd, text=True)
         row = json.loads(out.strip().splitlines()[-1])
         rows.append(row)
@@ -332,7 +365,7 @@ def _run_controlled_sweep(args, plan, out_name, title):
     print("ARI mean:     ", fmt(rows, "ari_mean", "{:.3f}"))
     print("ARI std:      ", fmt(rows, "ari_std", "{:.1e}"))
     print("Time/fit [s]: ", fmt(rows, "runtime_s", "{:.2f}"))
-    print("Incr. MB:     ", fmt(rows, "peak_extra_mb", "{:.0f}"))
+    print("Memory [MiB]: ", fmt(rows, "peak_extra_mb", "{:.0f}"))
     return rows
 
 
@@ -352,7 +385,7 @@ def driver_largek_iso(args):
 
 
 # ----------------------------------------------------------------------
-# W3: runtime scaling in n, M, K
+# Runtime scaling in n, M, K
 # ----------------------------------------------------------------------
 def driver_runtime(args):
     import matplotlib
@@ -441,13 +474,13 @@ def driver_runtime(args):
         ax.grid(alpha=0.3, which="both")
         ax.legend(fontsize=8, loc="upper left")
     plt.tight_layout()
-    out = os.path.join(ROOT, "paper", "images", "rebuttal_runtime_scaling.pdf")
+    out = os.path.join(ROOT, "paper", "images", "runtime_scaling.pdf")
     fig.savefig(out, bbox_inches="tight")
     print("Saved:", out)
 
 
 # ----------------------------------------------------------------------
-# Q2: finite-M ICL vs MMD elbow
+# Finite-M ICL vs MMD elbow
 # ----------------------------------------------------------------------
 def n_params(K, M):
     # diagonal covariance: weights (K-1) + means (K*M) + variances (K*M)
@@ -509,7 +542,7 @@ def driver_icl(args):
     ax1.axvline(true_K, color="gray", ls=":", label=f"true $K={true_K}$")
     ax1.set_title(f"MMD elbow vs finite-$M$ ICL (ICL argmin $K={icl_star}$)")
     fig.tight_layout()
-    out = os.path.join(ROOT, "paper", "images", "rebuttal_icl.pdf")
+    out = os.path.join(ROOT, "paper", "images", "icl_model_selection.pdf")
     fig.savefig(out, bbox_inches="tight")
     print("Saved:", out)
     print(f"\nTrue K={true_K} | ICL argmin K={icl_star} | BIC argmin K={bic_star}")
@@ -517,6 +550,7 @@ def driver_icl(args):
 
 # ----------------------------------------------------------------------
 def main():
+    global RESULTS
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
 
@@ -577,7 +611,22 @@ def main():
     p.add_argument("--sep", type=float, default=2.2)
     p.add_argument("--std", type=float, default=0.5)
 
+    for parser in sub.choices.values():
+        parser.add_argument("--threads", type=int, default=1,
+                            help="PyTorch and BLAS threads (default: 1)")
+        parser.add_argument("--results-dir", default=RESULTS,
+                            help="output directory; use a new directory for reruns")
     args = ap.parse_args()
+    if args.threads < 1:
+        ap.error("--threads must be positive")
+    RESULTS = os.path.abspath(args.results_dir)
+    os.makedirs(RESULTS, exist_ok=True)
+    torch.set_num_threads(args.threads)
+    with threadpool_limits(limits=args.threads):
+        _dispatch(args)
+
+
+def _dispatch(args):
     if args.cmd == "largek-single":
         print(json.dumps(run_largek_single(
             args.K, args.n_per, args.M, args.restarts, args.epochs, args.lr, args.seed,

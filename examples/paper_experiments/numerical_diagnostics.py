@@ -1,17 +1,14 @@
 #!/usr/bin/env python
 """
-Rebuttal experiments (Reviewer 2 / #aBwm).
+Numerical diagnostics for scaling, conditioning, and approximation quality.
 
-  scaling   -> W1 + Limitations: wall-clock / memory vs n, with and without the
+  scaling   -> wall-clock / memory vs n, with and without the
                O(n^2) data-data Gram term (which is constant in theta and is not
                needed by the optimizer).
-  stability -> W2: which matrices are factorized, their conditioning, and
+  stability -> which matrices are factorized, their conditioning, and
                Cholesky-vs-explicit-inverse accuracy.
-  nongauss  -> W3: non-Gaussian components (ring, heavy-tailed, curved,
+  nongauss  -> non-Gaussian components (ring, heavy-tailed, curved,
                bimodal): held-out MMD^2 vs number of components.
-
-Q1 (k-means vs the mixture) lives in reviewer2_kmeans.py, and the bandwidth
-sensitivity behind it in reviewer2_bandwidth.py.
 
 Uses the paper's own GaussianMixtureModel / GaussianKernel and MMD fitting.
 """
@@ -149,7 +146,7 @@ def fit_no_const(X, K, sigma, epochs, lr, seed, covariance_type="diagonal"):
 
 
 # ----------------------------------------------------------------------
-# W1: scaling in n, with / without the O(n^2) constant term
+# Scaling in n, with / without the O(n^2) constant term
 # ----------------------------------------------------------------------
 def run_scaling_single(n, K, M, epochs, lr, seed, with_const, const_exact_max=100000):
     import psutil
@@ -219,12 +216,12 @@ def driver_scaling(args):
                    "final_mmd2": None, "final_mmd": None, "oom": True}
         rows.append(row)
         print("  ", row, flush=True)
-    with open(os.path.join(RESULTS, "r2_scaling.json"), "w") as f:
+    with open(os.path.join(RESULTS, "sample_size_scaling.json"), "w") as f:
         json.dump(rows, f, indent=2)
 
 
 # ----------------------------------------------------------------------
-# W2: what is factorized, conditioning, Cholesky vs explicit inverse
+# What is factorized, conditioning, Cholesky vs explicit inverse
 # ----------------------------------------------------------------------
 def driver_stability(args):
     from sklearn.metrics import adjusted_rand_score  # noqa: F401  (import cost parity)
@@ -303,13 +300,13 @@ def driver_stability(args):
     out["chol_per_iter_full"] = f"K + K^2 = {K + K*K} (each {M}x{M})"
     out["chol_per_iter_diag"] = 0
 
-    with open(os.path.join(RESULTS, "r2_stability.json"), "w") as f:
+    with open(os.path.join(RESULTS, "numerical_stability.json"), "w") as f:
         json.dump(out, f, indent=2)
     print(json.dumps(out, indent=2))
 
 
 # ----------------------------------------------------------------------
-# W3: non-Gaussian component shapes
+# Non-Gaussian component shapes
 # ----------------------------------------------------------------------
 def make_ring(n, M, radius=3.0, width=0.25, seed=0):
     """Annulus in the first two coordinates, isotropic noise elsewhere."""
@@ -430,7 +427,7 @@ def driver_nongauss(args):
     print("  nested ring/blob:", nested, flush=True)
 
     data = {"Ks": Ks, "curves": curves, "nested": nested, "M": M, "n": n}
-    with open(os.path.join(RESULTS, "r2_nongauss.json"), "w") as f:
+    with open(os.path.join(RESULTS, "nongaussian_approximation.json"), "w") as f:
         json.dump(data, f, indent=2)
 
     fig, ax = plt.subplots(figsize=(5.4, 3.4))
@@ -443,13 +440,14 @@ def driver_nongauss(args):
     ax.grid(alpha=0.3)
     ax.legend(fontsize=8)
     fig.tight_layout()
-    outp = os.path.join(ROOT, "paper", "images", "rebuttal_nongaussian.pdf")
+    outp = os.path.join(ROOT, "paper", "images", "nongaussian_approximation.pdf")
     fig.savefig(outp, bbox_inches="tight")
     print("Saved:", outp)
 
 
 # ----------------------------------------------------------------------
 def main():
+    global RESULTS
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
 
@@ -486,7 +484,12 @@ def main():
     p.add_argument("--epochs", type=int, default=250)
     p.add_argument("--lr", type=float, default=0.05)
 
+    for parser in sub.choices.values():
+        parser.add_argument("--results-dir", default=RESULTS,
+                            help="output directory; use a new directory for reruns")
     args = ap.parse_args()
+    RESULTS = os.path.abspath(args.results_dir)
+    os.makedirs(RESULTS, exist_ok=True)
     if args.cmd == "scaling-single":
         print(json.dumps(run_scaling_single(
             args.n, args.K, args.M, args.epochs, args.lr, args.seed, args.with_const,

@@ -2,11 +2,12 @@
 """
 Benchmark: L² real-world functional data clustering.
 
-Loads 6 real/classic functional datasets, projects each onto an L² cosine
+Loads the paper's five scalar datasets (optionally also Canadian Weather), projects each onto an L² cosine
 basis, runs all applicable clustering methods, and reports ARI statistics
 (mean ± std across the datasets).
 """
 
+import argparse
 import os
 import sys
 import tarfile
@@ -21,6 +22,7 @@ import rdata
 import torch
 from scipy.spatial.distance import pdist, squareform
 from sklearn.metrics import adjusted_rand_score
+from threadpoolctl import threadpool_limits
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -41,7 +43,7 @@ from src.competitors import (
     ProjectedGMMEMFixedCovarianceClustering,
 )
 from examples.compare_clustering_glucodensity import estimate_dbscan_eps
-from benchmarks.runner import save_benchmark_results
+from benchmarks.runner import DEFAULT_RESULTS_DIR, save_benchmark_results
 
 # ──────────────────────────────────────────────────────────────────────
 # Configuration
@@ -49,7 +51,8 @@ from benchmarks.runner import save_benchmark_results
 NUM_EPOCHS = 400
 LR = 0.1
 SEED = 42
-DATA_DIR = Path("data")
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+PAPER_GPMIX_CONFIG = {"basis_type": "rl-fpc", "n_proj": 12, "random_state": SEED}
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -223,9 +226,25 @@ DATASET_SPECS = [
     (_load_kneading, 15),
     (_load_ecg200,   15),
 ]
+PAPER_DATASET_SPECS = [spec for spec in DATASET_SPECS if spec[0] is not _load_weather]
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--include-weather", action="store_true",
+                        help="extend the paper's five-dataset suite with Canadian Weather")
+    parser.add_argument("--threads", type=int, default=1)
+    parser.add_argument("--results-dir", default=DEFAULT_RESULTS_DIR)
+    args = parser.parse_args()
+    if args.threads < 1:
+        parser.error("--threads must be positive")
+    torch.set_num_threads(args.threads)
+    dataset_specs = DATASET_SPECS if args.include_weather else PAPER_DATASET_SPECS
+    with threadpool_limits(limits=args.threads):
+        _run_benchmark(dataset_specs, args.results_dir, args.include_weather)
+
+
+def _run_benchmark(dataset_specs, results_dir, include_weather):
     torch.manual_seed(SEED)
     np.random.seed(SEED)
 
@@ -233,7 +252,7 @@ def main():
     dtype = torch.float64
 
     print("=" * 60)
-    print(f"Benchmark: L² Real Data ({len(DATASET_SPECS)} datasets)")
+    print(f"Benchmark: L² Real Data ({len(dataset_specs)} datasets)")
     print("=" * 60)
 
     # ── Method list ──────────────────────────────────────────────────
@@ -278,7 +297,7 @@ def main():
         print("functional-data baselines not available, skipping FDA/L2-specific methods.")
 
     # ── Evaluate over datasets ───────────────────────────────────────
-    for loader_fn, R in DATASET_SPECS:
+    for loader_fn, R in dataset_specs:
         t_ds_start = time.perf_counter()
         try:
             X_np, y_true, K, ds_name = loader_fn()
@@ -360,7 +379,7 @@ def main():
             ("HDBSCAN", HDBSCANClustering(min_cluster_size=hdbscan_min_cluster_size)),
             ("K-Center", KCenterClustering(n_clusters=K)),
             ("Kernel k-Groups", KernelKGroupsClustering(n_clusters=K)),
-            ("GPmix", GPmixClustering(n_clusters=K, random_state=SEED)),
+            ("GPmix", GPmixClustering(n_clusters=K, **PAPER_GPMIX_CONFIG)),
         ]
 
         if use_functional:
@@ -433,14 +452,20 @@ def main():
         print(f"  {method_name:<22} {mean_ari:.3f} ± {std_ari:.3f}")
 
     save_benchmark_results(
-        benchmark_id="l2_real",
+        benchmark_id="l2_real_with_weather" if include_weather else "l2_real",
         config={
-            "datasets": [fn.__name__ for fn, _ in DATASET_SPECS],
+            "datasets": [fn.__name__ for fn, _ in dataset_specs],
             "num_epochs": NUM_EPOCHS,
             "lr": LR,
             "seed": SEED,
+            "gpmix": PAPER_GPMIX_CONFIG,
+            "torch_threads": torch.get_num_threads(),
+            "numpy_version": np.__version__,
+            "torch_version": torch.__version__,
         },
         results=results,
+        results_dir=results_dir,
+        regenerate=not include_weather,
     )
 
 

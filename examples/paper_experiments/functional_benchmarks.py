@@ -1,20 +1,20 @@
 #!/usr/bin/env python
 """
-Rebuttal experiments (Reviewer 3, #xDmR), on the five real L^2 benchmarks:
+Functional clustering benchmarks on the six real L^2 datasets:
 
-  gpmix       -> W3: GPmix as an additional functional-mixture baseline, swept
+  gpmix       -> GPmix as an additional functional-mixture baseline, swept
                  over its own basis/n_proj grid, plus a plain feature-space GMM
                  (EM, full covariance) on the identical cosine coefficients.
-  covariance  -> Q1: full vs diagonal vs spherical projected covariance, and the
+  covariance  -> full vs diagonal vs spherical projected covariance, and the
                  attained objective alongside the ARI -- full covariance reaches
                  a *lower* MMD^2 and a far worse ARI, so the collapse is not an
                  optimization artifact.
-  stability   -> Q2: empirical identifiability. Independent restarts at every
+  stability   -> empirical identifiability. Independent restarts at every
                  projection dimension M, for our method and for the Projected
                  GMM-EM baseline, scored by ARI vs. truth (mean_std over the
                  restarts), pairwise ARI between restarts, variation of
                  information, and posterior agreement.
-  descent     -> W1: monotonicity of the alternating objective, under both the
+  descent     -> monotonicity of the alternating objective, under both the
                  exact scheme Proposition 4 assumes (exact simplex QP + gradient
                  step with backtracking) and the Adam optimizer actually used.
 
@@ -69,7 +69,7 @@ def _save(name, payload):
     path = os.path.join(RESULTS, name)
     with open(path, "w") as f:
         json.dump(payload, f, indent=2)
-    print(f"[reviewer3] wrote {path}")
+    print(f"[functional_benchmarks] wrote {path}")
 
 
 # ----------------------------------------------------------------------
@@ -183,7 +183,7 @@ def solve_pi_exact(I, J, iters=500):
 
 
 # ----------------------------------------------------------------------
-# W3: GPmix and feature-space GMM baselines
+# GPmix and feature-space GMM baselines
 # ----------------------------------------------------------------------
 GPMIX_GRID = [
     (b, n)
@@ -194,7 +194,7 @@ GPMIX_GRID = [
 
 def driver_gpmix(args):
     print("=" * 70)
-    print("W3: GPmix and feature-space GMM baselines")
+    print("GPmix and feature-space GMM baselines")
     print("=" * 70)
 
     out = {"per_dataset": {}, "gpmix_grid": {}}
@@ -290,14 +290,14 @@ def driver_gpmix(args):
     print(f"  MMD GMM (Gaussian), fixed cfg       {summary['ours_mean']:.3f}")
     print(f"  Feature GMM (EM, full covariance)   {summary['feature_gmm_mean']:.3f}")
 
-    _save("r3_gpmix.json", out)
+    _save("gpmix_comparison.json", out)
     _emit_gpmix_latex(out, order, best_single)
 
 
 def _emit_gpmix_latex(out, order, best_single):
-    """Print the W3/Q1 comparison table (one column per dataset, best-fixed GPmix)."""
+    """Print the comparison table (one column per dataset, best-fixed GPmix)."""
     rows = ["MMD GMM (Gaussian)", "MMD GMM (Polynomial)", "Projected GMM"]
-    print("\n% --- W3/Q1 GPmix comparison table (best single GPmix cfg = "
+    print("\n% --- GPmix comparison table (best single GPmix cfg = "
           f"{best_single}) ---")
     header = "Method & " + " & ".join(order) + " & Mean"
     print(header + r" \\")
@@ -320,11 +320,11 @@ def _emit_gpmix_latex(out, order, best_single):
 
 
 # ----------------------------------------------------------------------
-# Q1: covariance structure
+# Covariance structure
 # ----------------------------------------------------------------------
 def driver_covariance(args):
     print("=" * 70)
-    print("Q1: full vs diagonal vs spherical projected covariance")
+    print("Full vs diagonal vs spherical projected covariance")
     print("=" * 70)
 
     cov_types = ["spherical", "diagonal", "full"]
@@ -383,11 +383,11 @@ def driver_covariance(args):
         print(f"  {c:<10} {summary[c]['mean_ari']:.3f} +/- "
               f"{summary[c]['std_ari']:.3f}   {summary[c]['mean_time_s']:.1f}s")
     out["summary"] = summary
-    _save("r3_covariance.json", out)
+    _save("covariance_comparison.json", out)
 
 
 # ----------------------------------------------------------------------
-# Q2: initialization and projection-dimension stability
+# Initialization and projection-dimension stability
 # ----------------------------------------------------------------------
 def fit_projected_gmm(X, K, seed, n_init=1, max_iter=100):
     """Projected GMM-EM (the paper's likelihood baseline) on the same coefficients."""
@@ -400,7 +400,7 @@ def fit_projected_gmm(X, K, seed, n_init=1, max_iter=100):
 def restart_scores(labs, resps, y):
     """Score a set of independent restarts on one dataset at one M.
 
-    ARI vs.\ truth carries the +/- across restarts; the pairwise quantities
+    ARI vs. truth carries the +/- across restarts; the pairwise quantities
     measure how far the restarts are from recovering the *same* partition,
     which is the empirical stand-in for identifiability of the representation.
     """
@@ -426,7 +426,7 @@ def _fmt_pm(entry, key):
 
 
 def emit_latex(out, key="pairwise_ari"):
-    """Print the two rebuttal tabulars: one row per dataset, one column per M.
+    """Print the two stability tables: one row per dataset, one column per M.
 
     Row means average the M values that dataset admits; column means average the
     datasets that admit that M. A dagger marks cells above the grid's Nyquist
@@ -460,7 +460,7 @@ def emit_latex(out, key="pairwise_ari"):
 
 def driver_stability(args):
     print("=" * 70)
-    print(f"Q2: empirical identifiability -- {args.restarts} restarts per "
+    print(f"Empirical identifiability -- {args.restarts} restarts per "
           f"(dataset, M), M in {args.m_grid}")
     print("=" * 70)
 
@@ -542,11 +542,11 @@ def driver_stability(args):
 
     emit_latex(out, "ari_vs_truth")
     emit_latex(out, "pairwise_ari")
-    _save("r3_stability.json", out)
+    _save("partition_stability.json", out)
 
 
 # ----------------------------------------------------------------------
-# W1: monotone descent (Proposition 4)
+# Monotone descent (Proposition 4)
 # ----------------------------------------------------------------------
 def run_exact_scheme(X, basis, K, kernel, steps=300, seed=SEED):
     """Algorithm 1 exactly as Proposition 4 assumes it.
@@ -602,7 +602,7 @@ def run_exact_scheme(X, basis, K, kernel, steps=300, seed=SEED):
 
 def driver_descent(args):
     print("=" * 70)
-    print("W1: monotonicity of the objective (Proposition 4)")
+    print("Monotonicity of the objective (Proposition 4)")
     print("=" * 70)
 
     out = {}
@@ -640,11 +640,12 @@ def driver_descent(args):
               f"  | adam: {a['n_increases']}/{len(da)} increases, "
               f"max +{a['max_increase']:.1e}")
 
-    _save("r3_descent.json", out)
+    _save("optimization_descent.json", out)
 
 
 # ----------------------------------------------------------------------
 def main():
+    global RESULTS
     warnings.filterwarnings("ignore")
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -670,7 +671,12 @@ def main():
     p = sub.add_parser("descent")
     p.add_argument("--steps", type=int, default=300)
 
+    for parser in sub.choices.values():
+        parser.add_argument("--results-dir", default=RESULTS,
+                            help="output directory; use a new directory for reruns")
     args = ap.parse_args()
+    RESULTS = os.path.abspath(args.results_dir)
+    os.makedirs(RESULTS, exist_ok=True)
     torch.manual_seed(SEED)
     np.random.seed(SEED)
 
