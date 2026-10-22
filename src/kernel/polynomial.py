@@ -8,7 +8,7 @@ where p ≥ 1 is the degree and c ≥ 0 is a constant.
 """
 import torch
 import math
-from typing import Optional
+from numbers import Integral
 
 from .base import Kernel
 
@@ -33,11 +33,11 @@ class PolynomialKernel(Kernel):
             eps_jitter: Small constant for numerical stability.
         """
         super().__init__(eps_jitter=eps_jitter)
-        if degree < 1:
-            raise ValueError(f"degree must be >= 1, got {degree}")
+        if not isinstance(degree, Integral) or isinstance(degree, bool) or degree < 1:
+            raise ValueError(f"degree must be an integer >= 1, got {degree}")
         if c < 0:
             raise ValueError(f"c must be >= 0, got {c}")
-        self.degree = degree
+        self.degree = int(degree)
         self.c = c
 
     def evaluate(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
@@ -140,7 +140,8 @@ class PolynomialKernel(Kernel):
 
         where Z_{k,s} = y^T y' for independent Gaussians.
 
-        The moments E[Z_{k,s}^r] are computed using Isserlis/Wick theorem.
+        The moments E[Z_{k,s}^r] are computed exactly using Gaussian
+        quadratic-form cumulants and the moment-cumulant recurrence.
 
         Args:
             m: Component means, shape (K, M)
@@ -182,11 +183,14 @@ class PolynomialKernel(Kernel):
         Compute E[Z^r] for r = 0, 1, ..., max_order where Z = y^T y'
         with y ~ N(m1, K1) and y' ~ N(m2, K2) independent.
 
-        Using Isserlis theorem for Gaussian moments:
-            E[Z] = m1^T m2
-            E[Z^2] = (m1^T m2)^2 + m1^T K2 m1 + m2^T K1 m2 + tr(K1 K2)
-            E[Z^3] = (m1^T m2)^3 + 3(m1^T m2)(m1^T K2 m1 + m2^T K1 m2 + tr(K1 K2))
-                   + 6 m1^T K2 K1 m2
+        Write B = [[0, K1], [K2, 0]], F = [[0, I], [I, 0]], and
+        a = (m1, m2). The r-th cumulant of Z is
+            c_r = (r-1)! tr(B^r)/2 + r! a^T F B^(r-1) a/2.
+        Odd trace terms vanish; tr(B^(2j)) = 2 tr((K1 K2)^j).
+        We evaluate these terms using M-dimensional blocks, without
+        constructing B or assuming invertible covariances. Raw moments obey
+            u_0 = 1, u_r = sum_{j=1}^r binom(r-1, j-1) c_j u_{r-j}.
+        This is exact at every degree, up to floating-point arithmetic.
 
         Args:
             m1, K1: Mean and covariance of first Gaussian
@@ -196,62 +200,37 @@ class PolynomialKernel(Kernel):
         Returns:
             moments: Tensor of shape (max_order + 1,) with E[Z^r] for r = 0..max_order
         """
-        device = m1.device
-        dtype = m1.dtype
-
-        moments = torch.zeros(max_order + 1, device=device, dtype=dtype)
-        moments[0] = 1.0
-
-        if max_order >= 1:
-            m1m2 = m1 @ m2
-            moments[1] = m1m2
-        else:
-            m1m2 = None
-
-        if max_order >= 2:
-            m1K2m1 = m1 @ K2 @ m1
-            m2K1m2 = m2 @ K1 @ m2
-            trK1K2 = (K1 * K2).sum()
-            second_term = m1K2m1 + m2K1m2 + trK1K2
-            moments[2] = m1m2**2 + second_term
-        else:
-            m1K2m1 = None
-            m2K1m2 = None
-            trK1K2 = None
-            second_term = None
-
-        if max_order >= 3:
-            m1K2K1m2 = m1 @ K2 @ K1 @ m2
-            moments[3] = m1m2**3 + 3 * m1m2 * second_term + 6 * m1K2K1m2
-        else:
-            m1K2K1m2 = None
-
-        if max_order >= 4:
-            K1K2 = K1 @ K2
-            trK1K2_sq = (K1K2 * K1K2.T).sum()
-            m1K2K1K2m1 = m1 @ K2 @ K1 @ K2 @ m1
-            m2K1K2K1m2 = m2 @ K1 @ K2 @ K1 @ m2
-            moments[4] = (
-                m1m2**4
-                + 6 * m1m2**2 * second_term
-                + 3 * second_term**2
-                + 24 * m1m2 * m1K2K1m2
-                + 12 * (m1K2K1K2m1 + m2K1K2K1m2)
-                + 12 * trK1K2_sq
+        cumulants = [m1.new_zeros(())]
+        vector1, vector2 = m1, m2  # Blocks of B^(r-1) a.
+        product = product_power = None
+        for r in range(1, max_order + 1):
+            cumulant = (math.factorial(r) / 2) * (
+                m1 @ vector2 + m2 @ vector1
             )
+            if r % 2 == 0:
+                if r == 2:
+                    # Avoid cubic matrix products for degrees one to three.
+                    trace_power = (K1 * K2).sum()
+                else:
+                    if product is None:
+                        product = K1 @ K2
+                        product_power = product
+                    # tr(P^j) = sum(P^(j-1) * P.T), including nonsymmetric P.
+                    trace_power = (product_power * product.T).sum()
+                    if r + 2 <= max_order:
+                        product_power = product_power @ product
+                cumulant = cumulant + math.factorial(r - 1) * trace_power
+            cumulants.append(cumulant)
+            if r < max_order:
+                vector1, vector2 = K1 @ vector2, K2 @ vector1
 
-        if max_order >= 5:
-            # For degree 5+, raise a warning or use numerical integration
-            import warnings
-            warnings.warn(
-                f"Polynomial kernel moments for degree > 4 use approximate formulas. "
-                f"Requested degree: {max_order}"
-            )
-            # Approximate higher moments using lower ones (rough approximation)
-            for r in range(5, max_order + 1):
-                moments[r] = moments[r - 1] * moments[1]
-
-        return moments
+        moments = [m1.new_ones(())]
+        for r in range(1, max_order + 1):
+            moments.append(sum(
+                math.comb(r - 1, j - 1) * cumulants[j] * moments[r - j]
+                for j in range(1, r + 1)
+            ))
+        return torch.stack(moments)
 
 
 class LinearKernel(PolynomialKernel):
